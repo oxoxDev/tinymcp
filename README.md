@@ -155,6 +155,29 @@ root `Cargo.toml`.
 
 GPL-3.0-only. See [LICENSE](LICENSE).
 
+## Agent tools
+
+Enable the `tools` feature to expose each server tool as a
+[`tinytools::Tool`](https://github.com/tinyhumansai/tinytools) through
+`tinymcp::tools`:
+
+- **Names** read `mcp_<server>_<tool>` (`mcp_ticktick_read_goals`),
+  provider-safe and at most 64 bytes. A digest suffix is added only when a
+  name is too long or two servers would collide.
+- **Exposure** is deferred by default, so a tool is found through the
+  harness's tool search. A server, or individual tools on it, can be made
+  direct (`McpExposure`).
+- **A persistent tool cache** (`mcp_tool_cache` in the store) is written on
+  every successful listing and keyed by a fingerprint of the server's
+  definition. `McpRegistry::cached_overview` and
+  `McpServerRegistry::cached_tools` answer from it without dialling, so a
+  host can offer every tool at boot.
+- **Calls** go through an `McpToolInvoker`. Both registries implement it; a
+  host wraps one with its own approvals, audit and screening.
+
+`tinytools` is a git dependency so a host that links another checkout of it can
+`[patch]` the two into one package.
+
 ## Static linking
 
 Enable the `static-link` feature when compiling this module into a Rust host. It
