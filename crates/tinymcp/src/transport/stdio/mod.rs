@@ -127,15 +127,26 @@ impl McpStdioClient {
             .find(|(key, _)| key == "PATH")
             .map_or(resolved_path.as_str(), |(_, value)| value.as_str());
 
-        if spawn_env::locate_command(&self.command, effective_path, self.cwd.as_deref()).is_none() {
+        // The spawn uses what the preflight found, not the name it was asked
+        // about. On Unix the two are interchangeable — `Command` performs the
+        // same `PATH` walk itself — but on Windows they are not:
+        // `CreateProcessW` appends only `.exe` to an extensionless name, and it
+        // resolves against the *parent's* `PATH` rather than the environment
+        // being handed to the child. So a bare `npx`, which
+        // `executable_candidates` resolves through `PATHEXT` to `npx.cmd`,
+        // passed this preflight and then failed to spawn with "program not
+        // found" — one line after the command was proven present.
+        let Some(resolved) =
+            spawn_env::locate_command(&self.command, effective_path, self.cwd.as_deref())
+        else {
             tracing::warn!(
                 command = %self.command,
                 "the stdio command was not found on the resolved path"
             );
             return Err(Error::missing_runtime(self.command.clone()));
-        }
+        };
 
-        let mut command = Command::new(&self.command);
+        let mut command = Command::new(&resolved);
         command
             .args(&self.args)
             .stdin(Stdio::piped())
