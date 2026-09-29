@@ -77,3 +77,11 @@ fn tool_results_render_text_and_error_status() {
     assert!(result.is_error);
     assert_eq!(result.text(), "invalid");
 }
+
+#[test]
+fn tool_result_without_text_falls_back_to_json() {
+    let reply = serde_json::json!({ "isError": "not a boolean", "content": "not an array" });
+    let rendered = super::render_tool_result(&reply);
+    assert!(!rendered.is_error);
+    assert_eq!(rendered.text(), reply.to_string());
+}
