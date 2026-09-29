@@ -22,14 +22,18 @@
 //! change. Each signature below matches the order documented on its member.
 
 mod config;
+mod directories;
+mod maintenance;
 #[allow(clippy::unused_async)]
 mod service;
 
 pub use config::ModuleConfig;
-pub use service::{McpService, ServerDetail};
+pub use service::McpService;
 
 use tinybus::{Connection, Result as TinyBusResult};
 use tinymcp_bus::names;
+
+use crate::registry::SupervisorConfig;
 
 /// Builds the service and serves it.
 ///
@@ -37,8 +41,17 @@ use tinymcp_bus::names;
 /// without its store or without a working HTTP client would answer every call
 /// with the same error, and failing at load says so once rather than on every
 /// request afterwards.
+///
+/// Connecting is the opposite: the boot pass and the reconnect supervisor start
+/// here as background work and `setup` does not wait for them, so a server that
+/// is down delays nothing. See [`maintenance`].
 pub(super) async fn setup(connection: Connection, config: ModuleConfig) -> TinyBusResult<()> {
+    let supervisor = SupervisorConfig::default();
     let service = McpService::new(&config)
+        .map_err(|error| tinybus::Error::failed(format!("tinymcp could not start: {error}")))?
+        .with_maintenance(supervisor.clone())
+        .await
+        .with_opener(connection.clone(), &config, supervisor)
         .map_err(|error| tinybus::Error::failed(format!("tinymcp could not start: {error}")))?;
 
     connection
@@ -80,6 +93,7 @@ export_module! {
     provides = ["ai.tinyhumans.tinymcp.Mcp"],
     methods = [
         "RegistrySearch",
+        "RegistrySearchCurated",
         "RegistryGet",
         "RegistrySettingsGet",
         "RegistrySettingsSet",
@@ -91,8 +105,10 @@ export_module! {
         "Connect",
         "Disconnect",
         "Status",
+        "ConnectedOverview",
         "DetectAuth",
         "OAuthBegin",
+        "OAuthComplete",
         "ListTools",
         "ToolCall",
         "ConfigAssist",
@@ -107,13 +123,15 @@ export_module! {
         "StaticCallTool",
         "AuditRecordWrite",
         "AuditListWrites",
+        "Open",
     ],
     signals = [],
     requires = [],
     optional = [],
     // Not lazy: a host that loaded this module wants its servers connected, and
     // deferring the load would defer that until the first call — by which point
-    // an agent has already been told it has no tools.
+    // an agent has already been told it has no tools. `setup` starts the boot
+    // connect pass and the supervisor for exactly that reason.
     lazy = false,
 }
 

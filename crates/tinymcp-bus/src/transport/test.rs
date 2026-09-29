@@ -1,5 +1,8 @@
 //! Unit tests for the transport payload types.
 //!
+//! The endpoint-redaction and tool-rendering cases at the bottom moved here with
+//! the functions from `tinymcp::transport`.
+//!
 //! Two obligations are checked here. The first is the **wire form**: these
 //! types are decoded from what a remote server sends, so a field spelled
 //! `inputSchema` in the protocol and `input_schema` in Rust has to keep both

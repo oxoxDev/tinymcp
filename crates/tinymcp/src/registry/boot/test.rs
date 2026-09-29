@@ -10,6 +10,8 @@
 use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{Value, json};
+use std::sync::Arc;
+use tokio::sync::Notify;
 
 use super::types::{BOOT_CONCURRENCY, BootOutcome, connect_installed_servers};
 use crate::registry::{Connections, OAuthFlow, Store};
@@ -272,4 +274,68 @@ async fn the_outcome_accounts_for_every_install() {
 #[test]
 fn an_empty_outcome_totals_nothing() {
     assert_eq!(BootOutcome::default().total(), 0);
+}
+
+#[tokio::test]
+async fn disabling_an_install_during_boot_does_not_publish_its_connection() {
+    let connected = Arc::new(Notify::new());
+    let release = Arc::new(Notify::new());
+    let app = Router::new().route(
+        "/",
+        post({
+            let connected = Arc::clone(&connected);
+            let release = Arc::clone(&release);
+            move |Json(body): Json<Value>| {
+                let connected = Arc::clone(&connected);
+                let release = Arc::clone(&release);
+                async move {
+                    let method = body["method"].as_str().unwrap_or_default();
+                    if method == "initialize" {
+                        connected.notify_one();
+                        release.notified().await;
+                    }
+                    let result = if method == "initialize" {
+                        json!({
+                            "protocolVersion": tinymcp_bus::LATEST_PROTOCOL_VERSION,
+                            "capabilities": {},
+                            "serverInfo": { "name": "working", "version": "1" },
+                        })
+                    } else {
+                        json!({ "tools": [{ "name": "forecast" }] })
+                    };
+                    Json(json!({ "jsonrpc": "2.0", "id": body["id"].clone(), "result": result }))
+                }
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    let store = Arc::new(Store::open_in_memory().unwrap());
+    store
+        .insert_server(&install(
+            "srv-racing",
+            Transport::HttpRemote {
+                url: format!("http://{addr}/"),
+            },
+            true,
+        ))
+        .unwrap();
+    let connections = Arc::new(Connections::new());
+    let boot_task = tokio::spawn({
+        let store = Arc::clone(&store);
+        let connections = Arc::clone(&connections);
+        async move { boot(&store, &connections).await }
+    });
+
+    connected.notified().await;
+    store.update_enabled("srv-racing", false).unwrap();
+    connections.disconnect("srv-racing").await;
+    release.notify_one();
+
+    let outcome = boot_task.await.unwrap();
+    assert_eq!(outcome.connected, 0);
+    assert_eq!(outcome.skipped, 1);
+    assert_eq!(connections.connected_count().await, 0);
 }

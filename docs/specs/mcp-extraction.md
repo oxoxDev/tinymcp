@@ -202,6 +202,39 @@ a download, a `dlopen`, and a resident library that TinyBus will never unload.
 - No file under `src/openhuman/` names `reqwest` for MCP purposes after step
   two, and the `mcp` Cargo feature is gone.
 
+## Contract 1.2: closing the gaps a host hit (issue #4)
+
+Contract 1.1 added the agent-tools family. Contract 1.2 adds the members and
+payloads below; all additions are backward-compatible for hosts that do not
+call the new members.
+
+- **`OAuthComplete(state, code)`** finishes an authorization. The module
+  resolves `state` to a server through its own pending-authorization map, so a
+  host never supplies a server id.
+- **The module owns the boot connect pass and the reconnect supervisor.** They
+  start from `setup` (and for each opened directory) as background work, and
+  loading never waits on them. They are not members: the supervisor's backoff
+  state and liveness probe are module-internal.
+- **`ConnectedOverview()`** returns the connected servers' identities and tools
+  in one call, replacing an N+1 over `Status`, `InstalledList` and `ListTools`.
+- **`ServerDetail`, `AuthDetection`, `AuthKind`** moved into `tinymcp-bus` so a
+  host names the types the module returns. Serde forms are unchanged.
+- **`RegistrySearchCurated(query, page, page_size, {tag_official, official_first})`**
+  applies the module's curation list. It is a new member because arguments are
+  positional and arity is checked, so a fourth argument on `RegistrySearch`
+  would break every 1.0 host.
+- **`ToolCallOutcome.rendered`** carries the rendered result (defaulted when
+  absent). `redact_endpoint` and `render_tool_result`, both pure, moved into
+  `tinymcp-bus`.
+- **`errors`** in `tinymcp-bus` names each failure class. A failed call carries
+  the name in its error header; the message is unchanged.
+- **`Open(data_dir)`** on the root object serves that directory as its own
+  object and returns the path. Idempotent per exact absolute path; the
+  load-time directory maps to the root path; capped at 32 directories.
+
+The library ships under its host-derived filename, `lib<id>_module.<ext>`, in
+release archives; the Rust library keeps the name `tinymcp`.
+
 ## Open questions
 
 - Does the audit log's storage move with it, or does the module call back to a

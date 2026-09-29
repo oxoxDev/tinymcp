@@ -327,10 +327,18 @@ jobs:
           package_name="${CRATE_NAME}-${VERSION}-${BUNDLE_ID}"
           package_root="dist/${package_name}"
           mkdir -p "$package_root"
-          install -m 755 "$module" "$package_root/"
+          # A host derives the library filename from the module id, as
+          # `<prefix><id>_module<suffix>`, and only then matches an installed
+          # copy against the one it downloaded. Cargo names the library after
+          # the crate (`libtinymcp.so`), and the crate keeps that name so
+          # `use tinymcp::` keeps working, so the archive ships it under the
+          # name a host looks for. The module's identity is in its ABI
+          # descriptor, not its filename; `modules.toml` below is keyed by
+          # the shipped name.
+          module_name="lib${library_name}_module.${module##*.}"
+          install -m 755 "$module" "$package_root/$module_name"
           install -m 644 LICENSE MODULE.md "$package_root/"
 
-          module_name="$(basename "$module")"
           module_hash="$(shasum -a 256 "$package_root/$module_name" | awk '{print $1}')"
           printf '"%s" = "%s"\n' "$module_name" "$module_hash" \
             > "$package_root/modules.toml"
@@ -358,9 +366,13 @@ jobs:
           $packageName = "$env:CRATE_NAME-$env:VERSION-$env:BUNDLE_ID"
           $packageRoot = "dist/$packageName"
           New-Item -ItemType Directory -Force $packageRoot | Out-Null
-          Copy-Item -LiteralPath $module, 'LICENSE', 'MODULE.md' -Destination $packageRoot
+          # See the Unix packaging step: the archive ships the library under the
+          # `<id>_module` name a host derives from the module id, not the name
+          # Cargo gives the crate's library.
+          $moduleName = "${libraryName}_module.dll"
+          Copy-Item -LiteralPath $module -Destination (Join-Path $packageRoot $moduleName)
+          Copy-Item -LiteralPath 'LICENSE', 'MODULE.md' -Destination $packageRoot
 
-          $moduleName = Split-Path -Leaf $module
           $hash = (Get-FileHash -LiteralPath "$packageRoot/$moduleName" -Algorithm SHA256).Hash.ToLowerInvariant()
           $utf8 = [System.Text.UTF8Encoding]::new($false)
           [System.IO.File]::WriteAllText(
@@ -485,10 +497,18 @@ jobs:
           package_name="${CRATE_NAME}-${VERSION}-${BUNDLE_ID}"
           package_root="dist/${package_name}"
           mkdir -p "$package_root"
-          install -m 755 "$module" "$package_root/"
+          # A host derives the library filename from the module id, as
+          # `<prefix><id>_module<suffix>`, and only then matches an installed
+          # copy against the one it downloaded. Cargo names the library after
+          # the crate (`libtinymcp.so`), and the crate keeps that name so
+          # `use tinymcp::` keeps working, so the archive ships it under the
+          # name a host looks for. The module's identity is in its ABI
+          # descriptor, not its filename; `modules.toml` below is keyed by
+          # the shipped name.
+          module_name="lib${library_name}_module.${module##*.}"
+          install -m 755 "$module" "$package_root/$module_name"
           install -m 644 LICENSE MODULE.md "$package_root/"
 
-          module_name="$(basename "$module")"
           module_hash="$(sha256sum "$package_root/$module_name" | awk '{print $1}')"
           printf '"%s" = "%s"\n' "$module_name" "$module_hash" \
             > "$package_root/modules.toml"

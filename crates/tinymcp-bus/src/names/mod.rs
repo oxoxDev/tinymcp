@@ -5,9 +5,9 @@
 //! through [`methods`] and the object through [`OBJECT_PATH`], so a rename is a
 //! compile error in every consumer rather than a runtime "unknown method".
 //!
-//! # The three families
+//! # The families
 //!
-//! [`METHODS`] is one flat list, but it covers three groups that answer to
+//! [`METHODS`] is one flat list, but it covers several groups that answer to
 //! different parts of a host:
 //!
 //! - **Registry** — browsing upstream catalogs, installing, connecting, and
@@ -17,6 +17,9 @@
 //! - **Static** — the servers a *host* declared in its own configuration. No
 //!   store, no install step; they exist because the host said so.
 //! - **Audit** — the durable record of every write an MCP tool performed.
+//!
+//! - **Directories** — opening a second data directory as its own object, for a
+//!   host whose active user, and so its storage, can change while it runs.
 //!
 //! They share one interface rather than claiming four objects because they
 //! share every transport primitive underneath, and splitting them would
@@ -28,12 +31,27 @@ pub const INTERFACE: &str = "ai.tinyhumans.tinymcp.Mcp";
 /// The object path the module serves its interface at.
 pub const OBJECT_PATH: &str = "/ai/tinyhumans/tinymcp/Mcp";
 
+/// The prefix of every per-directory object the root object serves.
+///
+/// `Open` answers with `{DIRECTORY_OBJECT_PREFIX}/d<N>`. A host does not build
+/// those paths — it is handed one — so this exists to let a host recognise one
+/// and to let the module's tests assert it never collides with [`OBJECT_PATH`].
+pub const DIRECTORY_OBJECT_PREFIX: &str = "/ai/tinyhumans/tinymcp/Dir";
+
 /// One constant per member of [`INTERFACE`].
 pub mod methods {
     // -- Registry: browsing -------------------------------------------------
 
     /// Searches the upstream registries for servers.
     pub const REGISTRY_SEARCH: &str = "RegistrySearch";
+    /// Searches the upstream registries, applying the curation the caller
+    /// asked for.
+    ///
+    /// A separate member from [`REGISTRY_SEARCH`] rather than a fourth
+    /// argument on it: arguments are positional and a call with the wrong
+    /// arity fails to decode, so widening `RegistrySearch` would break every
+    /// host built against the earlier contract.
+    pub const REGISTRY_SEARCH_CURATED: &str = "RegistrySearchCurated";
     /// Fetches one server's detail record from its upstream registry.
     pub const REGISTRY_GET: &str = "RegistryGet";
     /// Reports the registry-browse credentials, with secrets redacted.
@@ -62,10 +80,19 @@ pub mod methods {
     pub const DISCONNECT: &str = "Disconnect";
     /// Reports the connection state of every installed server.
     pub const STATUS: &str = "Status";
+    /// Reports every connected server's identity and tools in one call.
+    ///
+    /// Replaces composing `Status`, `InstalledList` and one `ListTools` per
+    /// server, which is an N+1 on a path a host runs whenever it builds a tool
+    /// list.
+    pub const CONNECTED_OVERVIEW: &str = "ConnectedOverview";
     /// Discovers how to authenticate to a server that answered 401.
     pub const DETECT_AUTH: &str = "DetectAuth";
     /// Starts an OAuth authorization for a server that requires one.
     pub const OAUTH_BEGIN: &str = "OAuthBegin";
+    /// Finishes an OAuth authorization: exchanges the code, stores the token,
+    /// and connects the server.
+    pub const OAUTH_COMPLETE: &str = "OAuthComplete";
 
     // -- Registry: tools ----------------------------------------------------
 
@@ -109,6 +136,12 @@ pub mod methods {
     pub const AUDIT_RECORD_WRITE: &str = "AuditRecordWrite";
     /// Lists recorded writes.
     pub const AUDIT_LIST_WRITES: &str = "AuditListWrites";
+
+    // -- Directories --------------------------------------------------------
+
+    /// Opens a data directory as its own object and returns the object path
+    /// it is served at.
+    pub const OPEN: &str = "Open";
 }
 
 /// Every member of [`INTERFACE`], in the order the interface dispatches them.
@@ -119,6 +152,7 @@ pub mod methods {
 pub const METHODS: &[&str] = &[
     // Registry: browsing
     methods::REGISTRY_SEARCH,
+    methods::REGISTRY_SEARCH_CURATED,
     methods::REGISTRY_GET,
     methods::REGISTRY_SETTINGS_GET,
     methods::REGISTRY_SETTINGS_SET,
@@ -132,8 +166,10 @@ pub const METHODS: &[&str] = &[
     methods::CONNECT,
     methods::DISCONNECT,
     methods::STATUS,
+    methods::CONNECTED_OVERVIEW,
     methods::DETECT_AUTH,
     methods::OAUTH_BEGIN,
+    methods::OAUTH_COMPLETE,
     // Registry: tools
     methods::LIST_TOOLS,
     methods::TOOL_CALL,
@@ -152,6 +188,8 @@ pub const METHODS: &[&str] = &[
     // Audit
     methods::AUDIT_RECORD_WRITE,
     methods::AUDIT_LIST_WRITES,
+    // Directories
+    methods::OPEN,
 ];
 
 #[cfg(test)]

@@ -206,6 +206,22 @@ impl Connections {
         let result = self
             .connect_inner(store, oauth, identity, proxy, server)
             .await;
+        let result = match result {
+            Ok(tools) => match store.get_server(&server.server_id) {
+                Ok(current) if current.enabled => Ok(tools),
+                Ok(_) => {
+                    self.disconnect(&server.server_id).await;
+                    Err(Error::ServerDisabled {
+                        server: server.server_id.clone(),
+                    })
+                }
+                Err(error) => {
+                    self.disconnect(&server.server_id).await;
+                    Err(error)
+                }
+            },
+            Err(error) => Err(error),
+        };
 
         match &result {
             Ok(_) => {

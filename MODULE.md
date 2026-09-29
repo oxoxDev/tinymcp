@@ -16,6 +16,12 @@ those files together when copying them into a TinyBus module directory. The
 allowlist binds the native library filename to its SHA-256 digest so TinyBus can
 reject a missing, renamed, or modified artifact before initialization.
 
+The library ships as `libtinymcp_module.so` (`.dylib`; `tinymcp_module.dll` on
+Windows), the `<id>_module` name a host derives from the module id, rather than
+the `libtinymcp.so` Cargo builds. The Rust library keeps its `tinymcp` name so
+`use tinymcp::` is unaffected; only the packaged copy is renamed, and
+`modules.toml` is keyed by that shipped name.
+
 The GitHub release also publishes `checksum.toml` as a separate asset. TinyBus
 checks that manifest before downloading and extracting the selected platform
 archive. Install directly from a tagged release with:

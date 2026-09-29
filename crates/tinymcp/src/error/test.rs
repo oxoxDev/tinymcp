@@ -286,6 +286,119 @@ fn the_malformed_helper_carries_its_detail_through() {
     }
 }
 
+// ---------------------------------------------------------------------------
+// The names an error travels under
+// ---------------------------------------------------------------------------
+
+/// A `reqwest` failure that needs no network: a URL that cannot be parsed.
+fn a_reqwest_error() -> reqwest::Error {
+    reqwest::Client::new()
+        .get("not a url")
+        .build()
+        .expect_err("that is not a url")
+}
+
+/// One of every variant, including the ones that wrap a foreign error.
+fn one_of_every_variant() -> Vec<Error> {
+    let mut errors = assorted_other_errors();
+    errors.push(oauth_challenge_error());
+    errors.push(Error::MissingRuntime {
+        command: "uvx".into(),
+        runtime: tinymcp_bus::CommandKind::Python,
+    });
+    errors.push(Error::Transport {
+        endpoint: "https://example.test".into(),
+        source: Box::new(a_reqwest_error()),
+    });
+    errors.push(Error::NotConnected {
+        server: "srv".into(),
+    });
+    errors.push(Error::ServerDisabled {
+        server: "srv".into(),
+    });
+    errors.push(Error::ClientBuild {
+        source: Box::new(a_reqwest_error()),
+    });
+    errors.push(serde_json::from_str::<u8>("x").unwrap_err().into());
+    errors.push(Error::store(
+        "listing",
+        rusqlite::Error::QueryReturnedNoRows,
+    ));
+    errors.push(Error::StoreIo {
+        path: "/nowhere".into(),
+        source: Box::new(std::io::Error::other("denied")),
+    });
+    errors.push(Error::Bus {
+        detail: "refused".into(),
+    });
+    errors.push(Error::invalid_argument("not absolute"));
+    errors
+}
+
+#[test]
+fn every_variant_travels_under_a_name_in_the_contract_table() {
+    for error in one_of_every_variant() {
+        assert!(
+            tinymcp_bus::errors::ALL.contains(&error.wire_name()),
+            "{error} maps to {}, which the contract does not list",
+            error.wire_name()
+        );
+    }
+}
+
+#[test]
+fn every_name_in_the_contract_table_is_produced_by_some_variant() {
+    // The other direction, so a name cannot sit in the table with nothing
+    // behind it — a host would be matching on something that never arrives.
+    let produced: std::collections::BTreeSet<&str> = one_of_every_variant()
+        .iter()
+        .map(Error::wire_name)
+        .collect();
+    let listed: std::collections::BTreeSet<&str> =
+        tinymcp_bus::errors::ALL.iter().copied().collect();
+
+    assert_eq!(produced, listed);
+}
+
+#[test]
+fn no_two_variants_share_a_name() {
+    let errors = one_of_every_variant();
+    let names: std::collections::BTreeSet<&str> = errors.iter().map(Error::wire_name).collect();
+
+    assert_eq!(names.len(), errors.len());
+}
+
+#[test]
+fn an_unauthorized_error_carries_the_name_a_host_classifies_on() {
+    assert_eq!(
+        oauth_challenge_error().wire_name(),
+        tinymcp_bus::errors::UNAUTHORIZED
+    );
+    assert_eq!(
+        bare_unauthorized_error().wire_name(),
+        tinymcp_bus::errors::UNAUTHORIZED
+    );
+}
+
+#[test]
+fn an_invalid_argument_error_says_which_rule_without_a_value() {
+    let error = Error::invalid_argument("a data directory must be absolute");
+
+    assert_eq!(
+        error.to_string(),
+        "invalid argument: a data directory must be absolute"
+    );
+}
+
+#[test]
+fn a_bus_error_names_what_the_bus_reported() {
+    let error = Error::Bus {
+        detail: "refused".into(),
+    };
+
+    assert_eq!(error.to_string(), "bus failure: refused");
+}
+
 #[test]
 fn server_failures_name_what_failed_and_keep_their_cause() {
     use std::error::Error as _;

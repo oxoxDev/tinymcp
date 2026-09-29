@@ -264,6 +264,26 @@ pub enum Error {
         source: Box<std::io::Error>,
     },
 
+    /// The bus refused something the module asked of it.
+    ///
+    /// Reported as prose because `tinybus`'s own error type is only available to
+    /// the adapter, and this crate is usable without linking a bus.
+    #[error("bus failure: {detail}")]
+    Bus {
+        /// What the bus reported.
+        detail: String,
+    },
+
+    /// An argument decoded but cannot be used.
+    ///
+    /// The detail describes the rule, never the value: a rejected data
+    /// directory is a user's path, and errors reach logs and telemetry.
+    #[error("invalid argument: {detail}")]
+    InvalidArgument {
+        /// Which rule the argument broke.
+        detail: String,
+    },
+
     /// Serving MCP failed to read a request or write a response.
     ///
     /// On stdio this is almost always the client going away: its end of the
@@ -333,6 +353,60 @@ impl Error {
         let command = command.into();
         let runtime = crate::transport::stdio::spawn_env::required_runtime(&command);
         Self::MissingRuntime { command, runtime }
+    }
+
+    /// The stable name this error travels under on the bus.
+    ///
+    /// One of the constants in [`tinymcp_bus::errors`]. The `match` is
+    /// exhaustive on purpose: a variant added without a name is a compile
+    /// error here rather than a failure a host cannot classify.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tinymcp::Error;
+    /// let error = Error::Unauthorized {
+    ///     endpoint: "https://example.test".into(),
+    ///     resource_metadata: None,
+    /// };
+    /// assert_eq!(error.wire_name(), tinymcp_bus::errors::UNAUTHORIZED);
+    /// ```
+    #[must_use]
+    pub const fn wire_name(&self) -> &'static str {
+        use tinymcp_bus::errors;
+
+        match self {
+            Self::Unauthorized { .. } => errors::UNAUTHORIZED,
+            Self::MissingRuntime { .. } => errors::MISSING_RUNTIME,
+            Self::Http { .. } => errors::HTTP,
+            Self::Transport { .. } => errors::TRANSPORT,
+            Self::UnsupportedProtocolVersion { .. } => errors::UNSUPPORTED_PROTOCOL_VERSION,
+            Self::MalformedResponse { .. } => errors::MALFORMED_RESPONSE,
+            Self::Rpc { .. } => errors::RPC,
+            Self::MissingAuthChallenge => errors::MISSING_AUTH_CHALLENGE,
+            Self::AuthDiscovery { .. } => errors::AUTH_DISCOVERY,
+            Self::ToolNotAllowed { .. } => errors::TOOL_NOT_ALLOWED,
+            Self::NotConnected { .. } => errors::NOT_CONNECTED,
+            Self::ServerDisabled { .. } => errors::SERVER_DISABLED,
+            Self::UnknownServer { .. } => errors::UNKNOWN_SERVER,
+            Self::ClientBuild { .. } => errors::CLIENT_BUILD,
+            Self::Serialization { .. } => errors::SERIALIZATION,
+            Self::Store { .. } => errors::STORE,
+            Self::StoreIo { .. } => errors::STORE_IO,
+            Self::Bus { .. } => errors::BUS,
+            Self::InvalidArgument { .. } => errors::INVALID_ARGUMENT,
+            Self::InvalidArguments { .. } => errors::INVALID_ARGUMENTS,
+            Self::ConfigDoc { .. } => errors::CONFIG_DOC,
+            Self::ServerIo { .. } => errors::SERVER_IO,
+            Self::ServerBind { .. } => errors::SERVER_BIND,
+        }
+    }
+
+    /// Builds a [`Self::InvalidArgument`] from anything printable.
+    pub(crate) fn invalid_argument(detail: impl std::fmt::Display) -> Self {
+        Self::InvalidArgument {
+            detail: detail.to_string(),
+        }
     }
 
     /// Whether this error means "the server wants credentials".

@@ -18,6 +18,9 @@
 //!   already-resolved proxy.
 //! - [`transport`] — the protocol's own shapes, plus the two rendered types a
 //!   caller consumes and the protocol versions a session may negotiate.
+//! - [`errors`] — the names a failed call travels under, so a host classifies on
+//!   a constant rather than on message wording.
+//! - [`auth`] — what `DetectAuth` reports a server wants before it will talk.
 //! - [`registry`] — installs, connection status, and the upstream registry
 //!   records.
 //! - [`audit`] — the durable record of every write an MCP tool performed.
@@ -31,7 +34,9 @@
 //! **No behavior.** The transports, the store, the supervisor, and the OAuth
 //! flow live in `crates/tinymcp`, which depends on this crate and re-exports
 //! it. A payload type describes what a frame carries, not what the module does
-//! with it.
+//! with it. The [`sanitize`] pipeline is the only shared policy, because both
+//! sides need identical bounds for untrusted text. Rendering and endpoint
+//! redaction live in the implementation crate.
 //!
 //! **No transport.** This crate holds no connection, client, or codec, and does
 //! not depend on `tinybus`, an async runtime, an HTTP client, or `rusqlite`. A
@@ -113,7 +118,9 @@
 
 pub mod agent_tools;
 pub mod audit;
+pub mod auth;
 pub mod config;
+pub mod errors;
 pub mod method;
 pub mod names;
 pub mod registry;
@@ -129,15 +136,16 @@ pub use audit::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord,
     NewMcpWriteRecord,
 };
+pub use auth::{AuthDetection, AuthKind};
 pub use config::{
     HttpHeader, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpProxyConfig,
     McpRegistryAuthConfig, McpServerConfig,
 };
 pub use method::{
-    ConnectOutcome, InstallOutcome, RegistrySearchPage, RegistrySettings, ToolCallOutcome,
-    UpdateEnvOutcome, UpdateEnvStatus,
+    ConnectOutcome, InstallOutcome, RegistrySearchPage, RegistrySettings, SearchCuration,
+    ServerDetail, ToolCallOutcome, UpdateEnvOutcome, UpdateEnvStatus,
 };
-pub use names::{INTERFACE, METHODS, OBJECT_PATH};
+pub use names::{DIRECTORY_OBJECT_PREFIX, INTERFACE, METHODS, OBJECT_PATH};
 pub use registry::{
     ChatTurn, CommandKind, ConnStatus, ConnectedServerOverview, ExtraFields, InstalledServer,
     McpAuthHint, McpTool, RegistryConnection, RegistryListResponse, RegistryPagination,

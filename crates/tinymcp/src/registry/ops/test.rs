@@ -20,7 +20,7 @@ use crate::Error;
 use crate::registry::Store;
 use tinymcp_bus::{
     CommandKind, InstalledServer, McpClientIdentityConfig, McpRegistryAuthConfig,
-    RegistryConnection, RegistryServerDetail, Transport, UpdateEnvStatus,
+    RegistryConnection, RegistryServerDetail, SearchCuration, Transport, UpdateEnvStatus,
 };
 
 // ---------------------------------------------------------------------------
@@ -1522,4 +1522,179 @@ async fn a_connection_test_against_a_subprocess_server_runs_the_command() {
         !matches!(error, Error::Transport { .. } | Error::Http { .. }),
         "{error:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Curated search
+// ---------------------------------------------------------------------------
+
+/// Serves an official-registry list of the named servers on a loopback port and
+/// returns a facade whose only source is that registry.
+async fn registry_over_catalog(names: &[&str]) -> McpRegistry {
+    use axum::routing::get;
+    use axum::{Json, Router};
+
+    let servers: Vec<serde_json::Value> = names
+        .iter()
+        .map(|name| {
+            json!({
+                "server": {
+                    "name": name,
+                    "description": "a server",
+                    "packages": [{ "registryType": "npm", "identifier": name }],
+                },
+            })
+        })
+        .collect();
+    let app = Router::new().route(
+        "/v0/servers",
+        get(move || {
+            let servers = servers.clone();
+            async move { Json(json!({ "servers": servers })) }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    McpRegistry::new(
+        Store::open_in_memory().unwrap(),
+        McpRegistryAuthConfig {
+            mcp_official_base: Some(base),
+            ..McpRegistryAuthConfig::default()
+        },
+        McpClientIdentityConfig::default(),
+        None,
+    )
+    .unwrap()
+}
+
+/// The qualified names on a page, in order.
+fn names(page: &tinymcp_bus::RegistrySearchPage) -> Vec<&str> {
+    page.servers
+        .iter()
+        .map(|server| server.qualified_name.as_str())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_search_with_no_curation_answers_as_the_plain_search_does() {
+    let registry = registry_over_catalog(&["io.example/other", "com.notion/mcp"]).await;
+
+    let plain = registry.registry_search(None, 1, 20).await.unwrap();
+    let curated = registry
+        .registry_search_curated(None, 1, 20, SearchCuration::default())
+        .await
+        .unwrap();
+
+    assert_eq!(plain, curated);
+    assert!(curated.servers.iter().all(|server| !server.official));
+}
+
+#[tokio::test]
+async fn tagging_marks_the_canonical_servers_and_only_them() {
+    let registry = registry_over_catalog(&["io.example/other", "com.notion/mcp"]).await;
+
+    let page = registry
+        .registry_search_curated(
+            None,
+            1,
+            20,
+            SearchCuration {
+                tag_official: true,
+                official_first: false,
+            },
+        )
+        .await
+        .unwrap();
+
+    // Order is the upstream's; only the flag changed.
+    assert_eq!(names(&page), ["io.example/other", "com.notion/mcp"]);
+    assert!(!page.servers[0].official);
+    assert!(page.servers[1].official);
+}
+
+#[tokio::test]
+async fn floating_after_tagging_puts_the_official_server_first() {
+    let registry = registry_over_catalog(&["io.example/other", "com.notion/mcp"]).await;
+
+    let page = registry
+        .registry_search_curated(
+            None,
+            1,
+            20,
+            SearchCuration {
+                tag_official: true,
+                official_first: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(names(&page), ["com.notion/mcp", "io.example/other"]);
+}
+
+#[tokio::test]
+async fn floating_without_tagging_leaves_untagged_rows_in_order() {
+    // Nothing is flagged, so the stable sort has nothing to move.
+    let registry = registry_over_catalog(&["io.example/other", "com.notion/mcp"]).await;
+
+    let page = registry
+        .registry_search_curated(
+            None,
+            1,
+            20,
+            SearchCuration {
+                tag_official: false,
+                official_first: true,
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(names(&page), ["io.example/other", "com.notion/mcp"]);
+}
+
+// ---------------------------------------------------------------------------
+// The background-work seams
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn connecting_the_installed_servers_of_an_empty_registry_does_nothing() {
+    let outcome = registry().connect_installed().await;
+
+    assert_eq!(outcome.total(), 0);
+}
+
+#[tokio::test]
+async fn connecting_the_installed_servers_skips_one_the_user_turned_off() {
+    let registry = registry();
+    registry
+        .store()
+        .insert_server(&install_record("srv-off", "@test/off", false))
+        .unwrap();
+
+    let outcome = registry.connect_installed().await;
+
+    assert_eq!(outcome.skipped, 1);
+    assert_eq!(outcome.connected, 0);
+}
+
+#[tokio::test]
+async fn a_supervisor_from_the_registry_steps_over_its_store() {
+    let registry = registry();
+    let mut supervisor = registry.supervisor(crate::registry::SupervisorConfig::default());
+
+    let report = supervisor
+        .tick(
+            registry.store(),
+            registry.connections(),
+            registry.oauth(),
+            std::time::Instant::now(),
+        )
+        .await;
+
+    assert!(report.is_empty());
 }

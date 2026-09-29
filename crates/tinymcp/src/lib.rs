@@ -90,9 +90,9 @@ pub use config_servers::{
 };
 pub use error::{Error, Result};
 pub use registry::{
-    AppliedServer, AuthDetection, AuthKind, ConfigApplyReport, Connections, McpRegistry, OAuthFlow,
-    ProbeOutcome, REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, SupervisedHost,
-    Supervisor, SupervisorConfig, SupervisorEvent, TickReport,
+    AppliedServer, ConfigApplyReport, Connections, McpRegistry, OAuthFlow, ProbeOutcome,
+    REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, SupervisedHost, Supervisor,
+    SupervisorConfig, SupervisorEvent, TickReport,
 };
 pub use server::{
     ClientSession, McpServerHandler, RequestContext, RequestHeaders, ResourceSpec, ServerInfo,
@@ -101,7 +101,7 @@ pub use server::{
 #[cfg(feature = "server-http")]
 pub use server::{HttpServerConfig, run_http, run_http_reporting};
 #[cfg(feature = "module")]
-pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};
+pub use tinybus_module::{McpService, ModuleConfig};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
 pub use transport::stdio::McpStdioClient;
 pub use transport::{redact_endpoint, render_tool_result};
@@ -112,8 +112,8 @@ pub use transport::{redact_endpoint, render_tool_result};
 // types; nothing here redefines them.
 pub use tinymcp_bus;
 pub use tinymcp_bus::{
-    AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind, ConnStatus,
-    ConnectedServerOverview, DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, ExtraFields,
+    AuthDetection, AuthKind, AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind,
+    ConnStatus, ConnectedServerOverview, DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, ExtraFields,
     HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, HttpHeader, INTERFACE, InstalledServer,
     LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES, MAX_LIST_LIMIT, MAX_TITLE_BYTES, METHODS,
     McpAuthChallenge, McpAuthConfig, McpAuthHint, McpAuthorizationContext, McpClientConfig,
@@ -122,5 +122,6 @@ pub use tinymcp_bus::{
     McpTool, McpToolContent, McpToolResult, McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord,
     OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection, RegistryListResponse,
     RegistryPagination, RegistryServerDetail, RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS,
-    ServerStatus, Transport, config, is_compatible, names, sanitize, version,
+    SearchCuration, ServerDetail, ServerStatus, Transport, config, is_compatible, names, sanitize,
+    version,
 };
