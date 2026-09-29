@@ -287,15 +287,18 @@ async fn call_tool(
     );
     match handler.call_tool(ctx, &name, arguments).await {
         Ok(result) => {
+            // Computed outside the macro: `tracing`'s expansion shadows
+            // `Value` with its own trait of that name.
+            let is_error = result
+                .get("isError")
+                .and_then(Value::as_bool)
+                .unwrap_or(false);
             tracing::debug!(
                 "[mcp_server] tools/call response id={} tool={} client_source_type={} is_error={}",
                 request_id,
                 name,
                 ctx.source_type(),
-                result
-                    .get("isError")
-                    .and_then(Value::as_bool)
-                    .unwrap_or(false)
+                is_error
             );
             success_response(id, result)
         }
