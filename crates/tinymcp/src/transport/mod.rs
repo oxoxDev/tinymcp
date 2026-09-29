@@ -9,7 +9,7 @@
 //!
 //! # Endpoints are redacted before they are logged
 //!
-//! [`redact_endpoint`], defined in the contract crate so a host can call the same
+//! [`redact_endpoint`], defined here so a host can call the same
 //! function, reduces a URL to its scheme and authority, and returns
 //! `<redacted>` outright for anything carrying userinfo or an unexpected
 //! scheme. Every log line and every error message in this crate passes an
@@ -17,12 +17,13 @@
 //! query parameter and occasionally credentials in userinfo, and errors reach
 //! logs, telemetry, and user interfaces alike.
 
+mod render;
+pub use render::{redact_endpoint, render_tool_result};
+
 pub mod http;
 pub mod stdio;
 
 use tinymcp_bus::SUPPORTED_PROTOCOL_VERSIONS;
-
-pub use tinymcp_bus::{redact_endpoint, render_tool_result};
 
 use crate::error::{Error, Result};
 
