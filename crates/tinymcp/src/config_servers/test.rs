@@ -39,26 +39,46 @@ fn tool(name: &str) -> McpRemoteTool {
 #[test]
 fn a_static_tool_fingerprint_tracks_auth_identity_without_storing_credentials() {
     let mut server = http_server("weather");
-    let no_auth = super::types::static_fingerprint(&server);
+    let no_auth = registry_of(vec![server.clone()])
+        .get("weather")
+        .expect("the server")
+        .fingerprint()
+        .to_string();
 
     server.auth = McpAuthConfig::Header {
         name: "x-api-key".into(),
         value: "first-secret".into(),
     };
-    let first_header = super::types::static_fingerprint(&server);
+    let first_header = registry_of(vec![server.clone()])
+        .get("weather")
+        .expect("the server")
+        .fingerprint()
+        .to_string();
     assert_ne!(first_header, no_auth);
 
     server.auth = McpAuthConfig::Header {
         name: "x-other-key".into(),
         value: "first-secret".into(),
     };
-    assert_ne!(super::types::static_fingerprint(&server), first_header);
+    assert_ne!(
+        registry_of(vec![server.clone()])
+            .get("weather")
+            .expect("the server")
+            .fingerprint(),
+        first_header
+    );
 
     server.auth = McpAuthConfig::Header {
         name: "x-api-key".into(),
         value: "second-secret".into(),
     };
-    assert_ne!(super::types::static_fingerprint(&server), first_header);
+    assert_ne!(
+        registry_of(vec![server])
+            .get("weather")
+            .expect("the server")
+            .fingerprint(),
+        first_header
+    );
 }
 
 // ---------------------------------------------------------------------------
