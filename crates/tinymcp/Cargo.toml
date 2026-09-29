@@ -45,6 +45,7 @@ serde_json = { workspace = true }
 # server's advertised tools. See the note on the workspace entry.
 tinytools = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
+anyhow = { workspace = true, optional = true }
 
 [[example]]
 name = "verify_module"
@@ -82,7 +83,7 @@ native-tls = ["reqwest/native-tls"]
 # `mcp_<server>_<tool>` names, sanitized descriptions and schemas, direct or
 # deferred exposure, and an invoker seam a host wraps with its own policy.
 # Off by default so the loadable module does not link the tool vocabulary.
-tools = ["dep:tinytools", "dep:async-trait"]
+tools = ["dep:tinytools", "dep:async-trait", "dep:anyhow"]
 
 [lints]
 workspace = true

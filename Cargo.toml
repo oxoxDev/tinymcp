@@ -65,6 +65,8 @@ tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "82c0d975
 # `#[async_trait]` on the tool adapter and the invoker trait, matching how
 # `tinytools::Tool` itself is declared.
 async-trait = "0.1"
+# `tinytools::Tool::execute` returns `anyhow::Result`.
+anyhow = "1"
 # The Streamable HTTP transport. `rustls-tls` by default so a build needs no
 # system OpenSSL; `stream` is load-bearing rather than convenience — the SSE
 # reader consumes the response body incrementally so a server that holds its
