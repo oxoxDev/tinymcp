@@ -363,7 +363,7 @@ async fn resources_read_answers_the_handler_contents() {
     assert_eq!(
         line(r#"{"jsonrpc":"2.0","id":11,"method":"resources/read","params":{"uri":" demo://readme "}}"#).await.as_deref(),
         Some(
-            r#"{"id":11,"jsonrpc":"2.0","result":{"contents":[{"mimeType":"text/markdown","text":"# Demo","uri":"demo://readme"}]}}"#
+            r##"{"id":11,"jsonrpc":"2.0","result":{"contents":[{"mimeType":"text/markdown","text":"# Demo","uri":"demo://readme"}]}}"##
         )
     );
 }
