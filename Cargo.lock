@@ -9,6 +9,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "anyhow"
+version = "1.0.104"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
+
+[[package]]
 name = "arbitrary"
 version = "1.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1643,6 +1649,8 @@ dependencies = [
 name = "tinymcp"
 version = "0.3.4"
 dependencies = [
+ "anyhow",
+ "async-trait",
  "axum",
  "base64 0.23.1",
  "dirs",
@@ -1658,6 +1666,7 @@ dependencies = [
  "tinybus",
  "tinybus-module",
  "tinymcp-bus",
+ "tinytools",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -1682,6 +1691,17 @@ checksum = "b1e27c91459209c2986af3dcf603a5a74a4368754ce37414f59acc971167f643"
 dependencies = [
  "displaydoc",
  "zerovec",
+]
+
+[[package]]
+name = "tinytools"
+version = "0.4.1"
+source = "git+https://github.com/tinyhumansai/tinytools?rev=82c0d975e2667e1c525afe525006134431641785#82c0d975e2667e1c525afe525006134431641785"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
