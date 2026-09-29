@@ -8,6 +8,12 @@ fn the_shipped_contract_version_is_pinned() {
 }
 
 #[test]
+fn a_host_on_this_contract_refuses_a_module_from_before_it() {
+    // 1.1 added the agent-tools family; a 1.0 module does not carry it.
+    assert!(!is_compatible((1, 0)));
+}
+
+#[test]
 fn the_contract_binds_to_itself() {
     assert!(is_compatible(CONTRACT_VERSION));
 }
