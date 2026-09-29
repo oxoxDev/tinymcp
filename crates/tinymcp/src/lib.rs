@@ -5,6 +5,10 @@
 //! HTTP or as a subprocess, browses the upstream registries, keeps track of what
 //! a user installed, supervises what it spawned, and records what got written.
 //!
+//! It also lets a host *be* one: [`server`] implements the protocol and the
+//! stdio transport around a host's [`McpServerHandler`], and — with the
+//! `server-http` feature — the Streamable HTTP + SSE transport.
+//!
 //! # Layout
 //!
 //! This is the implementation half of a two-crate workspace:
@@ -90,6 +94,12 @@ pub use registry::{
 };
 #[cfg(feature = "module")]
 pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};
+#[cfg(feature = "server-http")]
+pub use server::{HttpServerConfig, run_http, run_http_reporting};
+pub use server::{
+    ClientSession, McpServerHandler, RequestContext, RequestHeaders, ResourceSpec, ServerInfo,
+    ServerToolSpec, ToolCallError, run_stdio,
+};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
 pub use transport::stdio::McpStdioClient;
 pub use transport::{redact_endpoint, render_tool_result};
