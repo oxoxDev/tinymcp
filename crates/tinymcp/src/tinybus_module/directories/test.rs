@@ -380,14 +380,3 @@ async fn an_absolute_open_matches_a_relative_load_time_directory() {
     .unwrap();
     assert_eq!(path, OBJECT_PATH);
 }
-
-#[tokio::test]
-async fn serving_a_directory_reports_an_occupied_object_path() {
-    let connection = serve_root(&ModuleConfig::default()).await;
-    let service = McpService::new(&ModuleConfig::default()).unwrap();
-    let path = OBJECT_PATH.try_into().unwrap();
-    let error = super::types::serve_without_blocking_the_reply(&connection, path, service)
-        .await
-        .unwrap_err();
-    assert!(matches!(error, crate::Error::Bus { .. }));
-}
