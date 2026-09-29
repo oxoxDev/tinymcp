@@ -7,9 +7,13 @@
 //! See `README.md` beside this file for the design and the wire guarantees.
 
 pub mod args;
+#[cfg(test)]
+mod fixture;
+mod protocol;
 mod session;
 mod types;
 
+pub use protocol::{handle_line, handle_value};
 pub use session::ClientSession;
 pub use types::{
     DEFAULT_SOURCE_TYPE_PREFIX, McpServerHandler, RequestContext, RequestHeaders, ResourceSpec,
