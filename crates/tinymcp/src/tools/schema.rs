@@ -3,6 +3,8 @@
 use serde_json::{Value, json};
 use tinymcp_bus::sanitize::sanitize_for_llm;
 
+use super::MAX_LLM_BLOCK_BYTES;
+
 /// The longest a description or title inside a schema may be.
 const MAX_SCHEMA_TEXT_BYTES: usize = 500;
 
@@ -25,7 +27,14 @@ pub fn tool_parameters(input_schema: &Value) -> Value {
         map.insert("type".to_string(), json!("object"));
     }
     sanitize_schema_text(&mut schema);
-    schema
+    let exceeds_limit = serde_json::to_vec(&schema)
+        .map(|serialized| serialized.len() > MAX_LLM_BLOCK_BYTES)
+        .unwrap_or(true);
+    if exceeds_limit {
+        json!({ "type": "object", "properties": {} })
+    } else {
+        schema
+    }
 }
 
 /// Sanitizes every string-valued `description` and `title`, recursively.

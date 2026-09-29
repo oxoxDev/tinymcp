@@ -314,6 +314,26 @@ integration suites.
 
 ---
 
+## Phase 7 — Cached tool listings and host-facing adapter
+
+The extracted client also supports hosts that need to publish discovered MCP
+tools through `tinytools`. Discovery metadata may be cached for startup, while
+invocation continues through the live registry and host policy.
+
+- [x] Add a persistent tool-list cache keyed by server configuration
+      fingerprints, including environment values and authentication identity.
+- [x] Invalidate cached listings on credential, enablement, definition, and
+      uninstall changes; delete server and cache rows transactionally.
+- [x] Add an optional `tools` feature with stable names, sanitized and size
+      bounded schemas/results, and an injected `McpToolInvoker`.
+- [x] Test cache reuse and invalidation, name stability across source changes,
+      oversized model-facing data, and calls through the live registry.
+
+**Verify:** the workspace format, Clippy, build, tests, and per-file coverage
+commands listed below.
+
+---
+
 ## Verification
 
 Focused, while iterating:

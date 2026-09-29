@@ -372,11 +372,12 @@ impl McpRegistry {
         let mut merged = self.store.load_env_values(server_id)?;
         merged.extend(env);
         self.store.set_env_values(server_id, &merged)?;
-
-        self.connections.disconnect(server_id).await;
         // New credentials can change what a server offers; the reconnect below
         // re-caches on success, and a failed one must not leave the old list.
+        // Invalidate before awaiting teardown so cancellation cannot preserve a
+        // listing discovered with the previous credentials.
         self.store.forget_cached_tools(server_id)?;
+        self.connections.disconnect(server_id).await;
 
         let mut server = self.store.get_server(server_id)?;
 

@@ -338,6 +338,15 @@ fn a_malformed_root_schema_type_is_replaced_with_object() {
 }
 
 #[test]
+fn an_oversized_tool_schema_falls_back_to_an_empty_object_schema() {
+    let schema = tool_parameters(&json!({
+        "type": "object",
+        "properties": { "payload": { "enum": ["x".repeat(super::MAX_LLM_BLOCK_BYTES)] } },
+    }));
+    assert_eq!(schema, json!({ "type": "object", "properties": {} }));
+}
+
+#[test]
 fn a_rendered_result_keeps_its_error_flag_and_markdown() {
     let result = tool_result(McpToolResult {
         content: vec![
