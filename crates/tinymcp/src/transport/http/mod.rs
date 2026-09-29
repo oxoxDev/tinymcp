@@ -1021,7 +1021,7 @@ fn fill_missing_metadata(
     mut primary: AuthorizationServerMetadata,
     secondary: AuthorizationServerMetadata,
 ) -> AuthorizationServerMetadata {
-    if primary.issuer.trim_end_matches('/') != secondary.issuer.trim_end_matches('/') {
+    if primary.issuer != secondary.issuer {
         return primary;
     }
 

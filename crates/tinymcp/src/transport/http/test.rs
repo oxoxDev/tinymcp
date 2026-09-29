@@ -24,7 +24,10 @@ use serde_json::{Value, json};
 
 use super::headers::parse_www_authenticate_challenge;
 use super::sse::{first_complete_sse_data, parse_sse_events};
-use super::{HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient, rfc8414_metadata_url};
+use super::{
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient,
+    fill_missing_metadata, metadata_matches_issuer, rfc8414_metadata_url,
+};
 use crate::Error;
 use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig};
 
@@ -33,6 +36,55 @@ fn rfc8414_metadata_url_places_issuer_path_after_well_known_segment() {
     assert_eq!(
         rfc8414_metadata_url("https://example.com/tenant").unwrap(),
         "https://example.com/.well-known/oauth-authorization-server/tenant"
+    );
+}
+
+#[test]
+fn metadata_issuer_matching_preserves_trailing_slash_identity() {
+    let metadata = AuthorizationServerMetadata {
+        issuer: "https://example.com/tenant/".into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    };
+
+    assert!(!metadata_matches_issuer(
+        &metadata,
+        "https://example.com/tenant"
+    ));
+    assert!(metadata_matches_issuer(
+        &metadata,
+        "https://example.com/tenant/"
+    ));
+}
+
+#[test]
+fn mismatched_metadata_issuers_are_not_merged() {
+    let primary = AuthorizationServerMetadata {
+        issuer: "https://example.com/tenant".into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    };
+    let secondary = AuthorizationServerMetadata {
+        issuer: "https://example.com/tenant/".into(),
+        authorization_endpoint: Some("https://example.com/authorize".into()),
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    };
+
+    assert_eq!(
+        fill_missing_metadata(primary.clone(), secondary).authorization_endpoint,
+        None
     );
 }
 
