@@ -41,6 +41,10 @@ uuid = { workspace = true }
 sha2 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# The Streamable HTTP server transport. Only `server-http` takes these: a host
+# serving MCP over stdio alone, or not serving at all, links neither.
+axum = { workspace = true, optional = true }
+tokio-stream = { workspace = true, optional = true }
 
 [[example]]
 name = "verify_module"
@@ -55,7 +59,8 @@ required-features = ["module"]
 # five-minute timeout is testable without waiting five minutes. The rest comes
 # from the ordinary dependency entry above.
 tokio = { workspace = true, features = ["net", "test-util"] }
-axum = { workspace = true }
+# `form` for the OAuth token endpoint the authorization-flow suite stands up.
+axum = { workspace = true, features = ["form"] }
 # Temporary directories for the command-resolution tests.
 tempfile = { workspace = true }
 
@@ -74,6 +79,10 @@ rustls-tls = ["reqwest/rustls-tls"]
 # system trust store needs this; `rustls-tls` would reject those certificates.
 # Enable exactly one.
 native-tls = ["reqwest/native-tls"]
+# Serve MCP over Streamable HTTP + SSE (`server::run_http`). Off by default: the
+# stdio server and the protocol need nothing beyond the base dependencies, and
+# a host that does not listen on a socket should not link a server stack.
+server-http = ["dep:axum", "dep:tokio-stream", "tokio/net"]
 
 [lints]
 workspace = true

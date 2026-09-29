@@ -99,16 +99,22 @@ sha2 = "0.11"
 # Install identifiers.
 uuid = { version = "1", features = ["v4"] }
 
-# Test-only: the transport suites stand up a real HTTP server on a loopback
-# port and dial it, so the client is exercised over an actual socket rather
-# than against a hand-rolled mock of `reqwest`. That is what makes assertions
-# about headers, redirects, session expiry and SSE framing mean anything.
+# The Streamable HTTP *server* (`tinymcp/server-http`), and the loopback
+# servers the client transport suites dial — so the client is exercised over
+# an actual socket rather than against a hand-rolled mock of `reqwest`. That is
+# what makes assertions about headers, redirects, session expiry and SSE
+# framing mean anything. The minimum a server needs, so a host enabling
+# `server-http` gains no axum feature it did not ask for; the test-only `form`
+# extractor is added where the tests take it. 0.8 matches OpenHuman's, so the
+# host's lockfile carries one axum.
 axum = { version = "0.8", default-features = false, features = [
     "http1",
     "json",
-    "form",
     "tokio",
 ] }
+# The server's SSE stream is a `tokio::sync::broadcast` receiver adapted into a
+# `Stream`; `sync` is the feature carrying `BroadcastStream`.
+tokio-stream = { version = "0.1", default-features = false, features = ["sync"] }
 
 # Test-only: temporary directories for the spawn-environment suite, which
 # creates executable and non-executable files and resolves against them.
