@@ -54,6 +54,17 @@ serde_json = "1"
 # definitions the module reads. Enabled through `tinymcp-bus`'s `schemars`
 # feature; nothing in this workspace turns it on by default.
 schemars = { version = "1", default-features = false, features = ["derive"] }
+# The agent tool vocabulary, for the optional `tinymcp::tools` adapter that
+# turns a server's advertised tools into `tinytools::Tool`s. A git source
+# rather than a path on purpose: a host that already links tinytools through
+# another checkout redirects this one with a `[patch]` entry, so both resolve
+# to one package and `tinytools::ToolResult` stays one type. A second path
+# dependency could not be unified that way. Pinned to the revision tinyagents
+# vendors, which is the copy OpenHuman links.
+tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "82c0d975e2667e1c525afe525006134431641785" }
+# `#[async_trait]` on the tool adapter and the invoker trait, matching how
+# `tinytools::Tool` itself is declared.
+async-trait = "0.1"
 # The Streamable HTTP transport. `rustls-tls` by default so a build needs no
 # system OpenSSL; `stream` is load-bearing rather than convenience — the SSE
 # reader consumes the response body incrementally so a server that holds its

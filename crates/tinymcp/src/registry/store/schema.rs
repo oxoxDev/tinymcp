@@ -42,6 +42,13 @@ pub(super) fn initialize(connection: &Connection) -> Result<()> {
                  cache_key   TEXT PRIMARY KEY,
                  body_json   TEXT NOT NULL,
                  cached_at   INTEGER NOT NULL
+             );
+
+             CREATE TABLE IF NOT EXISTS mcp_tool_cache (
+                 server_key   TEXT PRIMARY KEY,
+                 fingerprint  TEXT NOT NULL,
+                 tools_json   TEXT NOT NULL,
+                 cached_at    INTEGER NOT NULL
              );",
         )
         .map_err(|source| Error::store("creating the schema", source))?;

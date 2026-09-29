@@ -30,7 +30,7 @@ const SERVER_COLUMNS: &str = "server_id, qualified_name, display_name, descripti
 /// Holds one connection for its lifetime. See the module documentation for why.
 #[derive(Debug)]
 pub struct Store {
-    connection: Mutex<Connection>,
+    pub(super) connection: Mutex<Connection>,
 }
 
 impl Store {
@@ -225,14 +225,22 @@ impl Store {
     ///
     /// Returns [`Error::Store`] when the delete fails.
     pub fn delete_server(&self, server_id: &str) -> Result<bool> {
-        let removed = self
-            .connection
-            .lock()
+        let connection = self.connection.lock();
+        let removed = connection
             .execute(
                 "DELETE FROM mcp_servers WHERE server_id = ?1",
                 params![server_id],
             )
             .map_err(|source| Error::store("deleting a server", source))?;
+        // The tool cache is keyed by the same identifier but carries no foreign
+        // key (static servers share the table), so it goes by hand. An
+        // uninstalled server must not keep surfacing tools.
+        connection
+            .execute(
+                "DELETE FROM mcp_tool_cache WHERE server_key = ?1",
+                params![server_id],
+            )
+            .map_err(|source| Error::store("forgetting a server's tools", source))?;
         Ok(removed > 0)
     }
 
@@ -530,7 +538,7 @@ fn decode_column<T: serde::de::DeserializeOwned>(
 /// A clock set before the epoch reads as zero rather than failing. Nothing here
 /// makes a decision that a wrong timestamp could make unsafe: the worst case is
 /// a cache entry that looks stale.
-fn now_ms() -> i64 {
+pub(super) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
