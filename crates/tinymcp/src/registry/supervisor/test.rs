@@ -16,7 +16,7 @@ use serde_json::{Value, json};
 
 use super::backoff::{BACKOFF_BASE, BACKOFF_MAX, BackoffState, delay_after};
 use super::report::{ServerRef, SupervisorEvent, TickReport};
-use super::types::{Supervisor, SupervisorConfig};
+use super::types::{SupervisedHost, Supervisor, SupervisorConfig};
 use crate::registry::{Connections, OAuthFlow, ProbeOutcome, Store};
 use tinymcp_bus::{CommandKind, InstalledServer, McpClientIdentityConfig, Transport};
 
@@ -1354,4 +1354,127 @@ async fn a_401_is_terminal_and_earns_no_backoff_penalty() {
         .await;
 
     assert_eq!(supervisor.terminally_failed_count(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Supervising several hosts
+// ---------------------------------------------------------------------------
+
+/// A registry over an in-memory store holding `servers`.
+fn registry_holding(servers: &[InstalledServer]) -> std::sync::Arc<crate::McpRegistry> {
+    let registry = crate::McpRegistry::new(
+        Store::open_in_memory().unwrap(),
+        tinymcp_bus::McpRegistryAuthConfig::default(),
+        McpClientIdentityConfig::default(),
+        None,
+    )
+    .unwrap();
+    for server in servers {
+        registry.store().insert_server(server).unwrap();
+    }
+    std::sync::Arc::new(registry)
+}
+
+/// A registry holding one install whose launcher cannot be found, so the
+/// supervisor parks it on the first tick and reports nothing after.
+fn registry_with_a_parked_server() -> std::sync::Arc<crate::McpRegistry> {
+    let registry = registry_holding(&[install("srv-1", Transport::Stdio, true)]);
+    registry
+        .store()
+        .set_env_values(
+            "srv-1",
+            &BTreeMap::from([(
+                "PATH".to_string(),
+                "/tinymcp/deliberately/does/not/exist".to_string(),
+            )]),
+        )
+        .unwrap();
+    registry
+}
+
+fn host(
+    key: &'static str,
+    registry: &std::sync::Arc<crate::McpRegistry>,
+) -> SupervisedHost<&'static str, std::sync::Arc<crate::McpRegistry>> {
+    SupervisedHost {
+        key,
+        registry: std::sync::Arc::clone(registry),
+        identity: McpClientIdentityConfig::default(),
+        proxy: None,
+    }
+}
+
+#[tokio::test]
+async fn run_many_keeps_each_hosts_state_and_adopts_a_host_that_appears_later() {
+    let parked = registry_with_a_parked_server();
+    let empty = registry_holding(&[]);
+    let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+
+    let mut calls = 0_u32;
+    let hosts = move || {
+        calls += 1;
+        // `b` opens after the first tick, as a workspace switch would.
+        if calls == 1 {
+            vec![host("a", &parked)]
+        } else {
+            vec![host("a", &parked), host("b", &empty)]
+        }
+    };
+    let running = tokio::spawn(Supervisor::run_many(
+        SupervisorConfig {
+            tick_interval: Duration::from_millis(10),
+            probe_timeout: Duration::from_secs(5),
+        },
+        hosts,
+        move |key: &&'static str, report: &TickReport| {
+            let _ = sender.send((*key, kinds(report)));
+        },
+    ));
+
+    let mut seen: Vec<(&str, Vec<&str>)> = Vec::new();
+    while seen.iter().filter(|(key, _)| *key == "a").count() < 3 {
+        let next = tokio::time::timeout(Duration::from_secs(10), receiver.recv())
+            .await
+            .expect("the loop keeps reporting")
+            .expect("the loop is running");
+        seen.push(next);
+    }
+    running.abort();
+
+    let a: Vec<&Vec<&str>> = seen
+        .iter()
+        .filter(|(key, _)| *key == "a")
+        .map(|(_, kinds)| kinds)
+        .collect();
+    // Parked once, then quiet: the same supervisor served every tick for `a`.
+    // A fresh one per tick would park it again.
+    assert_eq!(a[0], &vec!["parked"]);
+    assert!(a[1].is_empty(), "{a:?}");
+    assert!(a[2].is_empty(), "{a:?}");
+    // The host that appeared later was supervised from the next tick on.
+    assert_eq!(seen[0].0, "a");
+    assert!(seen.iter().any(|(key, _)| *key == "b"), "{seen:?}");
+}
+
+#[tokio::test(start_paused = true)]
+async fn run_many_waits_a_whole_interval_before_its_first_tick() {
+    let empty = registry_holding(&[]);
+    let (sender, mut receiver) = tokio::sync::mpsc::unbounded_channel();
+    let running = tokio::spawn(Supervisor::run_many(
+        SupervisorConfig {
+            tick_interval: Duration::from_secs(30),
+            ..SupervisorConfig::default()
+        },
+        move || vec![host("a", &empty)],
+        move |key: &&'static str, _report: &TickReport| {
+            let _ = sender.send(*key);
+        },
+    ));
+
+    tokio::time::sleep(Duration::from_secs(29)).await;
+    assert!(receiver.try_recv().is_err(), "a tick fired early");
+
+    tokio::time::sleep(Duration::from_secs(2)).await;
+    assert_eq!(receiver.try_recv().ok(), Some("a"));
+    running.abort();
 }
