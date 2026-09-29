@@ -36,6 +36,31 @@ fn tool(name: &str) -> McpRemoteTool {
     McpRemoteTool::new(name)
 }
 
+#[test]
+fn a_static_tool_fingerprint_tracks_auth_identity_without_storing_credentials() {
+    let mut server = http_server("weather");
+    let no_auth = super::types::static_fingerprint(&server);
+
+    server.auth = McpAuthConfig::Header {
+        name: "x-api-key".into(),
+        value: "first-secret".into(),
+    };
+    let first_header = super::types::static_fingerprint(&server);
+    assert_ne!(first_header, no_auth);
+
+    server.auth = McpAuthConfig::Header {
+        name: "x-other-key".into(),
+        value: "first-secret".into(),
+    };
+    assert_ne!(super::types::static_fingerprint(&server), first_header);
+
+    server.auth = McpAuthConfig::Header {
+        name: "x-api-key".into(),
+        value: "second-secret".into(),
+    };
+    assert_ne!(super::types::static_fingerprint(&server), first_header);
+}
+
 // ---------------------------------------------------------------------------
 // Building
 // ---------------------------------------------------------------------------
