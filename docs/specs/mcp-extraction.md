@@ -42,6 +42,9 @@ Three costs follow from that:
   path once `tinymcp` has cut a release.
 - Leave OpenHuman with no second implementation. The extracted code is deleted,
   not gated.
+- Provide an optional `tools` feature that adapts advertised MCP tools to the
+  shared `tinytools::Tool` interface. Calls remain behind the host's injected
+  invoker; host-specific scanning and approval policy stay at the host edge.
 
 ## Non-goals
 
@@ -128,7 +131,7 @@ Each is resolved explicitly rather than by pulling OpenHuman in behind it:
 | `security::prompt_injection::scan_tool_definition` | Stays in OpenHuman. Tool-definition scanning is host policy: the module returns definitions verbatim and the host scans at its own edge, where the result feeds the host's own threat model. |
 | `util::sanitize` | Moves into `tinymcp-bus`; OpenHuman depends on it from there. See above. |
 | `skills::types::ToolResult` | Becomes `McpToolResult` in the contract crate. OpenHuman converts at its edge. |
-| `agent::turn_origin`, `tools::traits::*` | Stay in OpenHuman. The agent-tool bridge is a host concern; the module exposes operations, not `Tool` implementations. |
+| `agent::turn_origin`, `tools::traits::*` | The agent runtime and policy stay in OpenHuman. The optional `tinymcp::tools` adapter implements the shared `tinytools::Tool` interface and delegates execution through a host-provided invoker; OpenHuman retains its own bridge and policy. |
 | SQLite file location | The host supplies a data directory in the module configuration. The filename stays `mcp_clients.db`. |
 
 ### OpenHuman consumption, in two steps

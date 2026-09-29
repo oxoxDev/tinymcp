@@ -75,6 +75,8 @@ pub mod registry;
 mod tinybus_module;
 #[cfg(feature = "static-link")]
 pub mod tinybus_module;
+#[cfg(feature = "tools")]
+pub mod tools;
 pub mod transport;
 
 pub use audit::AuditStore;

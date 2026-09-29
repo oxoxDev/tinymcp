@@ -310,6 +310,20 @@ impl Connections {
             );
         }
 
+        // Best effort too: the cache is what lets a host offer these tools
+        // before the next connect, and failing to write it must not fail a
+        // connection that works.
+        if let Err(error) = store.put_cached_tools(
+            &server.server_id,
+            &crate::registry::store::installed_fingerprint(server),
+            &tools,
+        ) {
+            tracing::debug!(
+                server_id = %server.server_id,
+                "could not cache the tool listing: {error}"
+            );
+        }
+
         tracing::debug!(
             server_id = %server.server_id,
             tools = tools.len(),

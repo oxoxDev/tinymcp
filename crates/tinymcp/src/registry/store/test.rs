@@ -20,7 +20,7 @@ use serde_json::json;
 use super::schema;
 use super::types::Store;
 use crate::Error;
-use tinymcp_bus::{CommandKind, InstalledServer, Transport};
+use tinymcp_bus::{CommandKind, InstalledServer, McpTool, Transport};
 
 /// A store over a fresh temporary file.
 ///
@@ -66,6 +66,38 @@ fn http_server(id: &str, url: &str) -> InstalledServer {
         },
         ..stdio_server(id)
     }
+}
+
+#[test]
+fn tool_cache_round_trips_and_requires_the_same_fingerprint() {
+    let (_directory, store) = store();
+    let tools = [McpTool::new("search")];
+    store
+        .put_cached_tools("srv-1", "definition-a", &tools)
+        .unwrap();
+    let cached = store
+        .cached_tools("srv-1", "definition-a")
+        .unwrap()
+        .unwrap();
+    assert_eq!(cached.tools, tools);
+    assert!(
+        store
+            .cached_tools("srv-1", "definition-b")
+            .unwrap()
+            .is_none()
+    );
+    assert!(store.forget_cached_tools("srv-1").unwrap());
+    assert!(!store.forget_cached_tools("srv-1").unwrap());
+}
+
+#[test]
+fn tool_cache_rejects_corrupt_json() {
+    let (_directory, store) = store();
+    store.connection.lock().execute(
+        "INSERT INTO mcp_tool_cache (server_key, fingerprint, tools_json, cached_at) VALUES ('srv-1', 'f', 'bad-json', 1)",
+        [],
+    ).unwrap();
+    assert!(store.cached_tools("srv-1", "f").is_err());
 }
 
 // ---------------------------------------------------------------------------

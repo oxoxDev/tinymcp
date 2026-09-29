@@ -10,7 +10,8 @@
 use super::{McpRegistrySource, McpServerRegistry};
 use crate::Error;
 use tinymcp_bus::{
-    McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpRemoteTool, McpServerConfig,
+    HttpHeader, McpAuthConfig, McpClientConfig, McpClientIdentityConfig, McpRemoteTool,
+    McpServerConfig,
 };
 
 /// An HTTP server entry with the given name.
@@ -34,6 +35,96 @@ fn registry_of(servers: Vec<McpServerConfig>) -> McpServerRegistry {
 /// A tool with the given name.
 fn tool(name: &str) -> McpRemoteTool {
     McpRemoteTool::new(name)
+}
+
+#[test]
+fn a_static_tool_fingerprint_tracks_auth_identity_without_storing_credentials() {
+    let mut server = http_server("weather");
+    let no_auth = registry_of(vec![server.clone()])
+        .get("weather")
+        .expect("the server")
+        .fingerprint()
+        .to_string();
+
+    server.auth = McpAuthConfig::Header {
+        name: "x-api-key".into(),
+        value: "first-secret".into(),
+    };
+    let first_header = registry_of(vec![server.clone()])
+        .get("weather")
+        .expect("the server")
+        .fingerprint()
+        .to_string();
+    assert_ne!(first_header, no_auth);
+
+    server.auth = McpAuthConfig::Header {
+        name: "x-other-key".into(),
+        value: "first-secret".into(),
+    };
+    assert_ne!(
+        registry_of(vec![server.clone()])
+            .get("weather")
+            .expect("the server")
+            .fingerprint(),
+        first_header
+    );
+
+    server.auth = McpAuthConfig::Header {
+        name: "x-api-key".into(),
+        value: "second-secret".into(),
+    };
+    assert_ne!(
+        registry_of(vec![server])
+            .get("weather")
+            .expect("the server")
+            .fingerprint(),
+        first_header
+    );
+}
+
+#[test]
+fn static_tool_fingerprints_cover_each_authentication_shape() {
+    let auth_configs = [
+        McpAuthConfig::BearerToken {
+            token: "token".into(),
+        },
+        McpAuthConfig::Basic {
+            username: "user".into(),
+            password: "password".into(),
+        },
+        McpAuthConfig::Headers {
+            headers: vec![
+                HttpHeader {
+                    name: "z-key".into(),
+                    value: "last".into(),
+                },
+                HttpHeader {
+                    name: "a-key".into(),
+                    value: "first".into(),
+                },
+            ],
+        },
+        McpAuthConfig::QueryParam {
+            name: "api_key".into(),
+            value: "secret".into(),
+        },
+    ];
+    let mut fingerprints = Vec::new();
+    for auth in auth_configs {
+        let mut server = http_server("weather");
+        server.auth = auth;
+        let registry = registry_of(vec![server]);
+        fingerprints.push(
+            registry
+                .get("weather")
+                .expect("the server")
+                .fingerprint()
+                .to_string(),
+        );
+    }
+    fingerprints.sort();
+    fingerprints.dedup();
+    assert_eq!(fingerprints.len(), 4);
 }
 
 // ---------------------------------------------------------------------------

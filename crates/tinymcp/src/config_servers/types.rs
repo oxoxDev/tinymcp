@@ -54,6 +54,9 @@ pub struct McpServerDefinition {
     pub source: McpRegistrySource,
     /// The transport, shared so the registry stays cheap to clone.
     client: Arc<McpTransportClient>,
+    /// What decides which server this definition reaches; see
+    /// [`Self::fingerprint`].
+    fingerprint: String,
 }
 
 impl McpServerDefinition {
@@ -110,6 +113,22 @@ impl McpServerDefinition {
     #[must_use]
     pub const fn is_stdio(&self) -> bool {
         self.command.is_some()
+    }
+
+    /// A digest of everything that decides which server this definition
+    /// reaches: endpoint, command, arguments, working directory, the names
+    /// (never the values) of its environment, and its tool allow and deny
+    /// lists. The tool cache is keyed on it, so an edited definition never
+    /// reads the old one's tools.
+    #[must_use]
+    pub fn fingerprint(&self) -> &str {
+        &self.fingerprint
+    }
+
+    /// The key this server's tools are cached under.
+    #[must_use]
+    pub fn cache_key(&self) -> String {
+        crate::registry::store::static_cache_key(&self.name)
     }
 }
 
@@ -331,6 +350,77 @@ impl McpServerRegistry {
         Ok(definition.filter_allowed_tools(tools))
     }
 
+    /// Lists a server's tools, as [`Self::list_tools`], and records the result
+    /// in `store`'s tool cache so [`Self::cached_tools`] can answer without
+    /// the network next time.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::list_tools`]. A failed cache write is logged, not returned:
+    /// the listing the caller asked for succeeded.
+    pub async fn list_tools_caching(
+        &self,
+        server: &str,
+        store: &crate::registry::Store,
+    ) -> Result<Vec<McpRemoteTool>> {
+        let definition = self.require(server)?;
+        let tools = self.list_tools(server).await?;
+        let cached: Vec<tinymcp_bus::McpTool> = tools.iter().map(remote_to_cached).collect();
+        if let Err(error) =
+            store.put_cached_tools(&definition.cache_key(), definition.fingerprint(), &cached)
+        {
+            tracing::debug!(server = %definition.name, "could not cache the tool listing: {error}");
+        }
+        Ok(tools)
+    }
+
+    /// A server's tools from `store`'s tool cache, without dialling.
+    ///
+    /// `None` when nothing is cached for this server's current definition.
+    /// The allow and deny lists are re-applied, so tightening them takes effect
+    /// on cached tools at once.
+    #[must_use]
+    pub fn cached_tools(
+        &self,
+        server: &str,
+        store: &crate::registry::Store,
+    ) -> Option<Vec<tinymcp_bus::McpTool>> {
+        let definition = self.get(server)?;
+        match store.cached_tools(&definition.cache_key(), definition.fingerprint()) {
+            Ok(cached) => cached.map(|cached| {
+                cached
+                    .tools
+                    .into_iter()
+                    .filter(|tool| definition.is_tool_allowed(&tool.name))
+                    .collect()
+            }),
+            Err(error) => {
+                tracing::debug!(server = %definition.name, "could not read the tool cache: {error}");
+                None
+            }
+        }
+    }
+
+    /// Lists every server's tools and caches them, one at a time.
+    ///
+    /// For a host warming the cache in the background. Returns each server's
+    /// name with the number of tools it advertised, or the error that stopped
+    /// it; one unreachable server does not stop the rest.
+    pub async fn refresh_tool_cache(
+        &self,
+        store: &crate::registry::Store,
+    ) -> Vec<(String, Result<usize>)> {
+        let mut outcomes = Vec::with_capacity(self.order.len());
+        for name in &self.order {
+            let outcome = self
+                .list_tools_caching(name, store)
+                .await
+                .map(|tools| tools.len());
+            outcomes.push((name.clone(), outcome));
+        }
+        outcomes
+    }
+
     /// Calls a tool on a server.
     ///
     /// The permission check runs *before* the transport, so a blocked call
@@ -439,6 +529,7 @@ impl McpServerRegistry {
             auth: server.auth.clone(),
             source,
             client: Arc::new(build_transport(server, identity, proxy)?),
+            fingerprint: static_fingerprint(server),
         });
 
         Ok(())
@@ -492,6 +583,96 @@ fn build_transport(
 /// Trims tool names, drops empties, and removes duplicates.
 ///
 /// Order is preserved so a caller reading the list back sees what they wrote.
+/// The fingerprint of a configured server; see
+/// [`McpServerDefinition::fingerprint`].
+fn static_fingerprint(server: &McpServerConfig) -> String {
+    let mut env_keys: Vec<&str> = server.env.keys().map(String::as_str).collect();
+    env_keys.sort_unstable();
+    let mut env: Vec<(&str, &str)> = server
+        .env
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    env.sort_unstable_by_key(|(key, _)| *key);
+    let env_fingerprint: Vec<String> = env
+        .into_iter()
+        .flat_map(|(key, value)| [key.to_string(), value.to_string()])
+        .collect();
+    let auth_parts = auth_fingerprint_parts(&server.auth);
+    let mut allowed = normalize_tool_names(&server.allowed_tools);
+    allowed.sort();
+    let mut disallowed = normalize_tool_names(&server.disallowed_tools);
+    disallowed.sort();
+    let mut parts = vec![
+        server.endpoint.trim().to_string(),
+        server.command.trim().to_string(),
+        server.args.join("\0"),
+        server.cwd.clone().unwrap_or_default(),
+        env_keys.join("\0"),
+        auth_parts[0].clone(),
+        allowed.join("\0"),
+        disallowed.join("\0"),
+    ];
+    parts.extend(env_fingerprint);
+    parts.extend(auth_parts.into_iter().skip(1));
+    let references: Vec<&str> = parts.iter().map(String::as_str).collect();
+    crate::registry::store::fingerprint(&references)
+}
+
+/// Stable, non-secret identity for the configured authentication scheme.
+fn auth_fingerprint_identity(auth: &McpAuthConfig) -> String {
+    match auth {
+        McpAuthConfig::None => "none".to_string(),
+        McpAuthConfig::BearerToken { .. } => "bearer".to_string(),
+        McpAuthConfig::Basic { .. } => "basic".to_string(),
+        McpAuthConfig::Header { name, .. } => format!("header:{name}"),
+        McpAuthConfig::Headers { headers } => {
+            let mut names: Vec<&str> = headers.iter().map(|header| header.name.as_str()).collect();
+            names.sort_unstable();
+            format!("headers:{}", names.join("\0"))
+        }
+        McpAuthConfig::QueryParam { name, .. } => format!("query:{name}"),
+        _ => "other".to_string(),
+    }
+}
+
+/// Inputs for the static cache digest; secret values are never stored directly.
+fn auth_fingerprint_parts(auth: &McpAuthConfig) -> Vec<String> {
+    let mut parts = vec![auth_fingerprint_identity(auth)];
+    match auth {
+        McpAuthConfig::BearerToken { token } => parts.push(token.clone()),
+        McpAuthConfig::Basic { username, password } => {
+            parts.push(username.clone());
+            parts.push(password.clone());
+        }
+        McpAuthConfig::Header { value, .. } | McpAuthConfig::QueryParam { value, .. } => {
+            parts.push(value.clone());
+        }
+        McpAuthConfig::Headers { headers } => {
+            let mut values: Vec<(&str, &str)> = headers
+                .iter()
+                .map(|header| (header.name.as_str(), header.value.as_str()))
+                .collect();
+            values.sort_unstable();
+            for (name, value) in values {
+                parts.push(name.to_string());
+                parts.push(value.to_string());
+            }
+        }
+        McpAuthConfig::None | _ => {}
+    }
+    parts
+}
+
+/// A listed tool in the shape the cache stores.
+fn remote_to_cached(tool: &McpRemoteTool) -> tinymcp_bus::McpTool {
+    tinymcp_bus::McpTool {
+        name: tool.name.clone(),
+        description: tool.description.clone(),
+        input_schema: tool.input_schema.clone(),
+    }
+}
+
 fn normalize_tool_names(tools: &[String]) -> Vec<String> {
     let mut normalized: Vec<String> = Vec::new();
     for tool in tools {
