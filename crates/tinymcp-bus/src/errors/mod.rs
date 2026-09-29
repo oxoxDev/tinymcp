@@ -76,6 +76,15 @@ pub const BUS: &str = "ai.tinyhumans.tinymcp.Error.Bus";
 /// directory that is not an absolute path.
 pub const INVALID_ARGUMENT: &str = "ai.tinyhumans.tinymcp.Error.InvalidArgument";
 
+/// MCP server request or response I/O failed.
+pub const SERVER_IO: &str = "ai.tinyhumans.tinymcp.Error.ServerIo";
+/// The MCP server could not bind its listening address.
+pub const SERVER_BIND: &str = "ai.tinyhumans.tinymcp.Error.ServerBind";
+/// A registry configuration document could not be applied.
+pub const CONFIG_DOC: &str = "ai.tinyhumans.tinymcp.Error.ConfigDoc";
+/// Tool arguments were valid JSON but did not match the tool schema.
+pub const INVALID_ARGUMENTS: &str = "ai.tinyhumans.tinymcp.Error.InvalidArguments";
+
 /// Every name in this table.
 pub const ALL: &[&str] = &[
     UNAUTHORIZED,
@@ -97,6 +106,10 @@ pub const ALL: &[&str] = &[
     STORE_IO,
     BUS,
     INVALID_ARGUMENT,
+    SERVER_IO,
+    SERVER_BIND,
+    CONFIG_DOC,
+    INVALID_ARGUMENTS,
 ];
 
 #[cfg(test)]
