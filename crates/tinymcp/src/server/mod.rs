@@ -7,8 +7,10 @@
 //! See `README.md` beside this file for the design and the wire guarantees.
 
 pub mod args;
+mod session;
 mod types;
 
+pub use session::ClientSession;
 pub use types::{
     DEFAULT_SOURCE_TYPE_PREFIX, McpServerHandler, RequestContext, RequestHeaders, ResourceSpec,
     ServerInfo, ServerToolSpec, ToolCallError,
