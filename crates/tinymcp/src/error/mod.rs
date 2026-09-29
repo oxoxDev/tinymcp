@@ -396,9 +396,11 @@ impl Error {
             Self::Store { .. } => errors::STORE,
             Self::StoreIo { .. } => errors::STORE_IO,
             Self::Bus { .. } => errors::BUS,
-            Self::InvalidArgument { .. }
-            | Self::InvalidArguments { .. }
-            | Self::ConfigDoc { .. } => errors::INVALID_ARGUMENT,
+            Self::InvalidArgument { .. } => errors::INVALID_ARGUMENT,
+            Self::InvalidArguments { .. } => errors::INVALID_ARGUMENTS,
+            Self::ConfigDoc { .. } => errors::CONFIG_DOC,
+            Self::ServerIo { .. } => errors::SERVER_IO,
+            Self::ServerBind { .. } => errors::SERVER_BIND,
         }
     }
 
