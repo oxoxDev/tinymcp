@@ -71,19 +71,11 @@ pub fn tools_for(
             if tool.name.trim().is_empty() {
                 continue;
             }
-            let base_name = naming::tool_name(&source.label, &tool.name);
-            let collides = sources.iter().any(|other| {
-                other.server_id != source.server_id
-                    && other.tools.iter().any(|candidate| {
-                        !candidate.name.trim().is_empty()
-                            && naming::tool_name(&other.label, &candidate.name) == base_name
-                    })
-            });
-            let mut name = if collides {
-                naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name)
-            } else {
-                base_name
-            };
+            // Include server identity even before a collision exists: a name
+            // recorded in a conversation must not change when another source
+            // with the same readable slug is added or removed.
+            let mut name =
+                naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);
             if taken.contains(&name) {
                 name =
                     naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);

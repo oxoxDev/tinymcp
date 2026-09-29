@@ -252,6 +252,7 @@ fn colliding_names_are_disambiguated_deterministically() {
         McpToolSource::from_overview(&overview("a", "@one/weather", &["forecast", "  "])),
     ];
     let tools = tools_for(&sources, &unreachable());
+    let alone = tools_for(&sources[1..], &unreachable());
     let names: Vec<&str> = tools.iter().map(Tool::name).collect();
     assert_eq!(names.len(), 2, "the blank name is skipped");
     assert!(
@@ -260,6 +261,11 @@ fn colliding_names_are_disambiguated_deterministically() {
             .all(|name| name.starts_with("mcp_weather_forecast_"))
     );
     assert_eq!(tools[0].server_id(), "a");
+    assert_eq!(
+        tools[0].name(),
+        alone[0].name(),
+        "adding a colliding source must not rename an existing tool"
+    );
 
     let again = tools_for(&sources, &unreachable());
     assert_eq!(again.iter().map(Tool::name).collect::<Vec<_>>(), names);
@@ -306,7 +312,10 @@ fn a_tool_declares_a_remote_effectful_call_grouped_by_server() {
     });
     let tools = tools_for(&[McpToolSource::from_overview(&source)], &unreachable());
     let tool = &tools[0];
-    assert_eq!(tool.name(), "mcp_ticktick_read_goals");
+    assert_eq!(
+        tool.name(),
+        disambiguated_tool_name("id-1", "@acme/ticktick-mcp", "readGoals")
+    );
     assert_eq!(tool.remote_name(), "readGoals");
     assert_eq!(tool.permission_level(), PermissionLevel::Execute);
     assert!(tool.external_effect());
@@ -378,7 +387,13 @@ async fn an_installed_server_is_callable_by_name_and_cached_for_the_next_boot() 
             .collect();
         let tools = tools_for(&sources, &invoker);
         let names: Vec<&str> = tools.iter().map(Tool::name).collect();
-        assert_eq!(names, ["mcp_ticktick_failing", "mcp_ticktick_read_goals"]);
+        assert_eq!(
+            names,
+            [
+                disambiguated_tool_name("s1", "@acme/ticktick-mcp", "failing").as_str(),
+                disambiguated_tool_name("s1", "@acme/ticktick-mcp", "readGoals").as_str(),
+            ]
+        );
 
         let read = tools
             .iter()
@@ -487,7 +502,10 @@ async fn a_configured_server_caches_its_listing_and_is_callable() {
         .iter()
         .find(|t| t.remote_name() == "readGoals")
         .unwrap();
-    assert_eq!(read.name(), "mcp_ticktick_read_goals");
+    assert_eq!(
+        read.name(),
+        disambiguated_tool_name("ticktick", "ticktick", "readGoals")
+    );
     assert_eq!(read.exposure(), ToolExposure::Direct);
 
     let result = read.execute(json!({ "list": "home" })).await.unwrap();
@@ -514,18 +532,7 @@ fn a_tool_one_server_lists_twice_is_built_once() {
     let source = McpToolSource::from_overview(&overview("a", "srv", &["dup", "dup", "dup"]));
     let tools = tools_for(&[source], &unreachable());
     assert_eq!(tools.len(), 1);
-    assert_eq!(tools[0].name(), "mcp_srv_dup");
-}
-
-#[test]
-fn duplicated_source_ids_get_a_fallback_name_for_repeated_tools() {
-    let sources = [
-        McpToolSource::from_overview(&overview("same", "srv", &["read"])),
-        McpToolSource::from_overview(&overview("same", "srv", &["read"])),
-    ];
-    let tools = tools_for(&sources, &unreachable());
-    assert_eq!(tools.len(), 2);
-    assert_ne!(tools[0].name(), tools[1].name());
+    assert_eq!(tools[0].name(), disambiguated_tool_name("a", "srv", "dup"));
 }
 
 #[test]
@@ -564,4 +571,39 @@ fn an_oversized_unmodelled_block_is_elided_but_keeps_its_type() {
     };
     assert_eq!(elided["type"], serde_json::to_value(&big).unwrap()["type"]);
     assert!(elided["data"].as_str().unwrap().ends_with("bytes elided]"));
+}
+
+#[test]
+fn oversized_text_json_and_markdown_results_are_elided() {
+    let oversized = "x".repeat(super::MAX_LLM_BLOCK_BYTES + 1);
+    let result = tool_result(McpToolResult {
+        content: vec![
+            McpToolContent::Text {
+                text: oversized.clone(),
+            },
+            McpToolContent::Json {
+                data: json!({ "payload": oversized }),
+            },
+        ],
+        is_error: false,
+        markdown_formatted: Some("m".repeat(super::MAX_LLM_BLOCK_BYTES + 1)),
+    });
+
+    let tinytools::ToolContent::Text { text } = &result.content[0] else {
+        panic!("text content keeps its type");
+    };
+    assert!(text.ends_with("bytes elided]"));
+    assert!(text.len() < super::MAX_LLM_BLOCK_BYTES);
+
+    let tinytools::ToolContent::Json { data } = &result.content[1] else {
+        panic!("JSON content keeps its type");
+    };
+    assert!(data.as_str().unwrap().ends_with("bytes elided]"));
+    assert!(
+        result
+            .markdown_formatted
+            .as_ref()
+            .unwrap()
+            .ends_with("bytes elided]")
+    );
 }

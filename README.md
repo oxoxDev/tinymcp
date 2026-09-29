@@ -161,7 +161,9 @@ Enable the `tools` feature to expose each server tool as a
 [`tinytools::Tool`](https://github.com/tinyhumansai/tinytools) through
 `tinymcp::tools`:
 
-- **Names** read `mcp_<server>_<tool>` (`mcp_ticktick_read_goals`),
+- **Names** read `mcp_<server>_<tool>_<server-id digest>` (for example,
+  `mcp_ticktick_read_goals_a1b2c3`). The server identity keeps a name stable
+  when another server with the same readable label is added or removed.
   provider-safe and at most 64 bytes. A digest suffix is added only when a
   name is too long or two servers would collide.
 - **Exposure** is deferred by default, so a tool is found through the

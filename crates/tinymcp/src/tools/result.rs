@@ -4,12 +4,10 @@ use serde_json::{Value, json};
 use tinymcp_bus::{McpToolContent, McpToolResult};
 use tinytools::{ToolContent, ToolResult};
 
-/// The most a pass-through content block may serialize to before its payload
-/// is elided.
+/// The most a content block may serialize to before its payload is elided.
 ///
-/// A block kind this build does not model is carried through as JSON rather
-/// than dropped, and such a block can be a base64 image or audio — megabytes.
-/// Above this the payload is replaced with a marker that keeps the block type.
+/// Text, JSON, formatted Markdown, and unrecognized blocks are bounded before
+/// being returned to a model. Above this the payload is replaced with a marker.
 pub const MAX_LLM_BLOCK_BYTES: usize = 64 * 1024;
 
 /// Maps a rendered MCP result onto [`ToolResult`].
@@ -24,15 +22,19 @@ pub fn tool_result(result: McpToolResult) -> ToolResult {
             .content
             .into_iter()
             .map(|block| match block {
-                McpToolContent::Text { text } => ToolContent::Text { text },
-                McpToolContent::Json { data } => ToolContent::Json { data },
+                McpToolContent::Text { text } => ToolContent::Text {
+                    text: bound_text(text),
+                },
+                McpToolContent::Json { data } => ToolContent::Json {
+                    data: bound_json(data),
+                },
                 // The contract's block enum is `#[non_exhaustive]`: a kind this
                 // build does not model travels as its JSON, bounded.
                 other => passthrough(&other),
             })
             .collect(),
         is_error: result.is_error,
-        markdown_formatted: result.markdown_formatted,
+        markdown_formatted: result.markdown_formatted.map(bound_text),
         ..ToolResult::default()
     }
 }
@@ -53,8 +55,26 @@ pub(crate) fn elide_oversized_block(block: &McpToolContent) -> Value {
         return value;
     }
     let kind = value.get("type").cloned().unwrap_or(Value::Null);
-    json!({
-        "type": kind,
-        "data": format!("[{} bytes elided]", serialized.len()),
-    })
+    json!({"type": kind, "data": elision_marker(serialized.len())})
+}
+
+fn bound_text(text: String) -> String {
+    if text.len() <= MAX_LLM_BLOCK_BYTES {
+        text
+    } else {
+        elision_marker(text.len())
+    }
+}
+
+fn bound_json(data: Value) -> Value {
+    let serialized = serde_json::to_string(&data).unwrap_or_default();
+    if serialized.len() <= MAX_LLM_BLOCK_BYTES {
+        data
+    } else {
+        Value::String(elision_marker(serialized.len()))
+    }
+}
+
+fn elision_marker(bytes: usize) -> String {
+    format!("[{bytes} bytes elided]")
 }
