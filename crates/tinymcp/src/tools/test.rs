@@ -641,6 +641,7 @@ impl McpToolInvoker for Recording {
         Ok(McpToolResult {
             content: vec![McpToolContent::Text { text: "ok".into() }],
             is_error: false,
+            markdown_formatted: None,
         })
     }
 }
