@@ -598,7 +598,7 @@ fn static_fingerprint(server: &McpServerConfig) -> String {
         .into_iter()
         .flat_map(|(key, value)| [key.to_string(), value.to_string()])
         .collect();
-    let env_parts: Vec<&str> = env_fingerprint.iter().map(String::as_str).collect();
+    let auth_parts = auth_fingerprint_parts(&server.auth);
     let mut allowed = normalize_tool_names(&server.allowed_tools);
     allowed.sort();
     let mut disallowed = normalize_tool_names(&server.disallowed_tools);
@@ -609,11 +609,12 @@ fn static_fingerprint(server: &McpServerConfig) -> String {
         server.args.join("\0"),
         server.cwd.clone().unwrap_or_default(),
         env_keys.join("\0"),
-        auth_fingerprint_identity(&server.auth),
+        auth_parts[0].clone(),
         allowed.join("\0"),
         disallowed.join("\0"),
     ];
     parts.extend(env_fingerprint);
+    parts.extend(auth_parts.into_iter().skip(1));
     let references: Vec<&str> = parts.iter().map(String::as_str).collect();
     crate::registry::store::fingerprint(&references)
 }
@@ -633,6 +634,33 @@ fn auth_fingerprint_identity(auth: &McpAuthConfig) -> String {
         McpAuthConfig::QueryParam { name, .. } => format!("query:{name}"),
         _ => "other".to_string(),
     }
+}
+
+/// Inputs for the static cache digest; secret values are never stored directly.
+fn auth_fingerprint_parts(auth: &McpAuthConfig) -> Vec<String> {
+    let mut parts = vec![auth_fingerprint_identity(auth)];
+    match auth {
+        McpAuthConfig::BearerToken { token } => parts.push(token.clone()),
+        McpAuthConfig::Basic { username, password } => {
+            parts.push(username.clone());
+            parts.push(password.clone());
+        }
+        McpAuthConfig::Header { value, .. } => parts.push(value.clone()),
+        McpAuthConfig::Headers { headers } => {
+            let mut values: Vec<(&str, &str)> = headers
+                .iter()
+                .map(|header| (header.name.as_str(), header.value.as_str()))
+                .collect();
+            values.sort_unstable();
+            for (name, value) in values {
+                parts.push(name.to_string());
+                parts.push(value.to_string());
+            }
+        }
+        McpAuthConfig::QueryParam { value, .. } => parts.push(value.clone()),
+        McpAuthConfig::None | _ => {}
+    }
+    parts
 }
 
 /// A listed tool in the shape the cache stores.
