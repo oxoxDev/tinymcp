@@ -814,25 +814,25 @@ impl McpHttpClient {
         &self,
         issuer: &str,
     ) -> Result<AuthorizationServerMetadata> {
-        let trimmed = issuer.trim_end_matches('/');
-        let oauth_url = rfc8414_metadata_url(trimmed)?;
-        let oidc_url = format!("{trimmed}/.well-known/openid-configuration");
+        let issuer_url = issuer.trim_end_matches('/');
+        let oauth_url = rfc8414_metadata_url(issuer_url)?;
+        let oidc_url = format!("{issuer_url}/.well-known/openid-configuration");
 
         let oauth = self
             .fetch_json::<AuthorizationServerMetadata>(&oauth_url)
             .await;
         match oauth {
             Ok(metadata)
-                if metadata_matches_issuer(&metadata, trimmed) && has_every_endpoint(&metadata) =>
+                if metadata_matches_issuer(&metadata, issuer) && has_every_endpoint(&metadata) =>
             {
                 Ok(metadata)
             }
-            Ok(metadata) if !metadata_matches_issuer(&metadata, trimmed) => {
-                tracing::debug!(issuer = %redact_endpoint(trimmed), "[mcp] rfc 8414 issuer did not match, trying oidc discovery");
+            Ok(metadata) if !metadata_matches_issuer(&metadata, issuer) => {
+                tracing::debug!(issuer = %redact_endpoint(issuer_url), "[mcp] rfc 8414 issuer did not match, trying oidc discovery");
                 let oidc = self
                     .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
                     .await?;
-                validate_metadata_issuer(&oidc, trimmed)?;
+                validate_metadata_issuer(&oidc, issuer)?;
                 Ok(oidc)
             }
             Ok(metadata) => {
@@ -840,13 +840,13 @@ impl McpHttpClient {
                     .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
                     .await
                 {
-                    Ok(oidc) if metadata_matches_issuer(&oidc, trimmed) => {
+                    Ok(oidc) if metadata_matches_issuer(&oidc, issuer) => {
                         Ok(fill_missing_metadata(metadata, oidc))
                     }
                     Ok(_) => Ok(metadata),
                     Err(error) => {
                         tracing::debug!(
-                            issuer = %redact_endpoint(trimmed),
+                            issuer = %redact_endpoint(issuer_url),
                             "[mcp] oidc discovery unavailable to complete rfc 8414 metadata: {error}"
                         );
                         Ok(metadata)
@@ -855,13 +855,13 @@ impl McpHttpClient {
             }
             Err(oauth_error) => {
                 tracing::debug!(
-                    issuer = %redact_endpoint(trimmed),
+                    issuer = %redact_endpoint(issuer_url),
                     "[mcp] rfc 8414 metadata unavailable, trying oidc discovery: {oauth_error}"
                 );
                 let metadata = self
                     .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
                     .await?;
-                validate_metadata_issuer(&metadata, trimmed)?;
+                validate_metadata_issuer(&metadata, issuer)?;
                 Ok(metadata)
             }
         }
@@ -963,7 +963,7 @@ fn rfc8414_metadata_url(issuer: &str) -> Result<String> {
 }
 
 fn metadata_matches_issuer(metadata: &AuthorizationServerMetadata, issuer: &str) -> bool {
-    metadata.issuer.trim_end_matches('/') == issuer.trim_end_matches('/')
+    metadata.issuer == issuer
 }
 
 fn validate_metadata_issuer(metadata: &AuthorizationServerMetadata, issuer: &str) -> Result<()> {
