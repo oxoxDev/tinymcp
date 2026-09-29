@@ -10,6 +10,7 @@
 //! credentials at rest, and a supervisor for what got spawned.
 
 pub mod boot;
+pub mod config_doc;
 pub mod connections;
 pub mod curation;
 pub mod oauth;
