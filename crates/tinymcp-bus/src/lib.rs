@@ -122,9 +122,8 @@ pub mod transport;
 pub mod version;
 
 pub use agent_tools::{
-    ActionToolSpec, AgentToolEffect, AgentToolSpec, ArgsError, RegistryTool, action_tool_spec,
-    action_tool_specs, normalize_tool_arguments, registry_tool_specs, sanitize_schema_descriptions,
-    searchable_name,
+    AgentToolEffect, AgentToolSpec, ArgsError, RegistryTool, normalize_tool_arguments,
+    registry_tool_specs,
 };
 pub use audit::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord,

@@ -2,10 +2,10 @@
 //!
 //! A host that puts MCP in front of a model gives it two kinds of tool: the
 //! fixed registry tools ([`RegistryTool`]) — browse the catalog, connect,
-//! call — and one deferred tool per action a connected server advertises
-//! ([`action_tool_specs`]). Both are described here as [`AgentToolSpec`]s: the
-//! name, description and schema a model reads, plus what calling the tool can
-//! do ([`AgentToolEffect`]).
+//! call. They are described here as [`AgentToolSpec`]s: the name, description
+//! and schema a model reads, plus what calling the tool can do
+//! ([`AgentToolEffect`]). The per-action tools a connected server advertises
+//! are adapted by `tinymcp::tools` (the `tools` feature), not here.
 //!
 //! [`normalize_tool_arguments`] is the other half: models do not always send
 //! `arguments` as the object MCP requires, and every path that forwards a call
@@ -27,15 +27,10 @@
 //! [`action_tool_specs`] takes the admission decision as a filter for exactly
 //! that reason.
 
-mod action;
 mod arguments;
 mod registry_tools;
 mod types;
 
-pub use action::{
-    ActionToolSpec, action_tool_spec, action_tool_specs, sanitize_schema_descriptions,
-    searchable_name,
-};
 pub use arguments::normalize_tool_arguments;
 pub use registry_tools::{RegistryTool, registry_tool_specs};
 pub use types::{AgentToolEffect, AgentToolSpec, ArgsError};
