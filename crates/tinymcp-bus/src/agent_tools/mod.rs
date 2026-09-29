@@ -24,8 +24,6 @@
 //! **Execution and policy.** Running a tool, mapping [`AgentToolEffect`] onto
 //! a permission model, approvals, deciding which remote tools pass a
 //! prompt-injection scan, and whether a tool is shown at all are the host's.
-//! [`action_tool_specs`] takes the admission decision as a filter for exactly
-//! that reason.
 
 mod arguments;
 mod registry_tools;

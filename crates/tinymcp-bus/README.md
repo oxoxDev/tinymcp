@@ -15,8 +15,7 @@ vocabulary has to be published as an ordinary library. This is it.
 | `agent_tools` | tool specs a host exposes to a model, and argument normalization |
 | `version`  | `CONTRACT_VERSION` and the bind rule a host applies to it     |
 
-Three dependencies, all pure Rust: `serde`, `serde_json`, and `sha2` (the
-digest in an action tool's name).
+Two dependencies, both pure Rust: `serde` and `serde_json`.
 
 ## This crate sits underneath `template`
 

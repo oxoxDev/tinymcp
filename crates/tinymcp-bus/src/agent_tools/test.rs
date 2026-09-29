@@ -5,9 +5,7 @@
 
 use serde_json::{Value, json};
 
-use super::{
-    AgentToolEffect, AgentToolSpec, ArgsError, RegistryTool, normalize_tool_arguments,
-};
+use super::{AgentToolEffect, AgentToolSpec, ArgsError, RegistryTool, normalize_tool_arguments};
 
 // ---------------------------------------------------------------------------
 // Argument normalization
