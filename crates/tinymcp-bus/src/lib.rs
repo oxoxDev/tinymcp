@@ -109,6 +109,7 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
+pub mod agent_tools;
 pub mod audit;
 pub mod config;
 pub mod method;
