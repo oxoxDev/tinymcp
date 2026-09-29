@@ -48,10 +48,12 @@ Three costs follow from that:
 
 ## Non-goals
 
-- **`src/openhuman/mcp/server/` does not move.** That is OpenHuman acting *as*
-  an MCP server, exposing its own curated tool surface to external hosts. It is
-  bound to OpenHuman's tool registry, permission model, and agent turn
-  machinery. It is the server side; this extraction is the client side.
+- **OpenHuman's server policy does not move.** That is OpenHuman acting *as*
+  an MCP server, exposing its own curated tool surface to external hosts, and
+  it stays bound to OpenHuman's tool registry, permission model, and agent turn
+  machinery. A later stage did move the *generic* server half — protocol,
+  session provenance, argument validators, stdio and Streamable HTTP
+  transports — behind a handler trait; see [`mcp-server.md`](mcp-server.md).
 - No protocol changes. The supported MCP protocol versions, the JSON-RPC
   framing, the SSE handling, and the OAuth discovery sequence are ported as-is.
 - No new registry sources. Smithery and the official

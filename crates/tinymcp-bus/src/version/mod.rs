@@ -8,6 +8,8 @@
 //! release workflow bumps, which tracks the shipped artifact.
 
 /// The wire contract version this crate defines.
+///
+/// 1.1 added the [`crate::agent_tools`] family.
 pub const CONTRACT_VERSION: (u32, u32) = (1, 1);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module

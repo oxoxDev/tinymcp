@@ -10,6 +10,7 @@
 //! credentials at rest, and a supervisor for what got spawned.
 
 pub mod boot;
+pub mod config_doc;
 pub mod connections;
 pub mod curation;
 pub mod oauth;
@@ -20,10 +21,13 @@ pub mod store;
 pub mod supervisor;
 
 pub use boot::{BootOutcome, connect_installed_servers};
+pub use config_doc::{AppliedServer, ConfigApplyReport};
 pub use connections::{Connections, ProbeOutcome, REMOTE_REQUEST_TIMEOUT};
 pub use oauth::{AuthDetection, AuthKind, OAuthFlow};
 pub use ops::McpRegistry;
 pub use setup::{SecretRef, SecretVault};
 pub use sources::{Registries, RegistrySource};
 pub use store::Store;
-pub use supervisor::{ServerRef, Supervisor, SupervisorConfig, SupervisorEvent, TickReport};
+pub use supervisor::{
+    ServerRef, SupervisedHost, Supervisor, SupervisorConfig, SupervisorEvent, TickReport,
+};

@@ -14,10 +14,11 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::{
-    AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthChallenge,
-    McpAuthorizationContext, McpClientInfo, McpInitializeResult, McpRemoteTool,
-    McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
-    SUPPORTED_PROTOCOL_VERSIONS, redact_endpoint, render_tool_result,
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
+    LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
+    McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
+    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS, redact_endpoint,
+    render_tool_result,
 };
 use crate::{MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES, McpClientIdentityConfig};
 use serde_json::json;
@@ -652,4 +653,13 @@ fn a_non_boolean_is_error_is_treated_as_no_error() {
 fn a_reply_whose_content_is_not_an_array_renders_as_its_own_json() {
     let reply = json!({ "content": "not an array" });
     assert_eq!(render_tool_result(&reply).text(), reply.to_string());
+}
+
+#[test]
+fn the_streamable_http_header_names_are_pinned() {
+    // Header names are wire contract: a server and a client that spell one
+    // differently never see each other's session.
+    assert_eq!(HEADER_PROTOCOL_VERSION, "MCP-Protocol-Version");
+    assert_eq!(HEADER_SESSION_ID, "Mcp-Session-Id");
+    assert_eq!(crate::HEADER_SESSION_ID, HEADER_SESSION_ID);
 }

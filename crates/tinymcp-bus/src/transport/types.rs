@@ -27,6 +27,17 @@ pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &[
     LATEST_PROTOCOL_VERSION,
 ];
 
+/// The Streamable HTTP request header carrying the negotiated protocol version.
+///
+/// Sent on every request after `initialize`. Header names are wire contract:
+/// a client and a server that spell one differently never agree on a version.
+pub const HEADER_PROTOCOL_VERSION: &str = "MCP-Protocol-Version";
+
+/// The Streamable HTTP header carrying the session identifier, in both
+/// directions: a server assigns it on `initialize` and a client echoes it on
+/// every request after.
+pub const HEADER_SESSION_ID: &str = "Mcp-Session-Id";
+
 /// A tool advertised by a remote MCP server.
 ///
 /// # Read the display accessors, not the raw fields

@@ -22,6 +22,11 @@
 //! why the function is published here rather than kept private to the module.
 //! [`render_tool_result`] is the other pure helper: it turns a raw `tools/call`
 //! reply into an [`McpToolResult`].
+//! # The Streamable HTTP header names
+//!
+//! [`HEADER_PROTOCOL_VERSION`] and [`HEADER_SESSION_ID`] are the two headers
+//! both ends of a Streamable HTTP session must spell alike, so a host serving
+//! MCP names the same constants the client transport sends.
 //!
 //! # Untrusted text
 //!
@@ -36,10 +41,10 @@ mod types;
 
 pub use render::{redact_endpoint, render_tool_result};
 pub use types::{
-    AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthChallenge,
-    McpAuthorizationContext, McpClientInfo, McpInitializeResult, McpRemoteTool,
-    McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
-    SUPPORTED_PROTOCOL_VERSIONS,
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
+    LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
+    McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
+    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
 };
 
 #[cfg(test)]

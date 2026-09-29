@@ -60,6 +60,20 @@ fn assorted_other_errors() -> Vec<Error> {
         Error::UnknownServer {
             server: "nope".into(),
         },
+        Error::ConfigDoc {
+            detail: "`a` needs a `url`".into(),
+        },
+        Error::InvalidArguments {
+            tool: "forecast".into(),
+            reason: tinymcp_bus::ArgsError::NotAnObject { actual: "a number" },
+        },
+        Error::ServerIo {
+            source: Box::new(std::io::Error::other("pipe closed")),
+        },
+        Error::ServerBind {
+            addr: "127.0.0.1:9300".parse().unwrap(),
+            source: Box::new(std::io::Error::other("address in use")),
+        },
     ]
 }
 
@@ -383,4 +397,25 @@ fn a_bus_error_names_what_the_bus_reported() {
     };
 
     assert_eq!(error.to_string(), "bus failure: refused");
+}
+
+#[test]
+fn server_failures_name_what_failed_and_keep_their_cause() {
+    use std::error::Error as _;
+
+    let io = Error::ServerIo {
+        source: Box::new(std::io::Error::other("pipe closed")),
+    };
+    assert_eq!(io.to_string(), "mcp server i/o failure: pipe closed");
+    assert_eq!(io.source().unwrap().to_string(), "pipe closed");
+
+    let bind = Error::ServerBind {
+        addr: "127.0.0.1:9300".parse().unwrap(),
+        source: Box::new(std::io::Error::other("address in use")),
+    };
+    assert_eq!(
+        bind.to_string(),
+        "could not bind the mcp server on `127.0.0.1:9300`: address in use"
+    );
+    assert_eq!(bind.source().unwrap().to_string(), "address in use");
 }

@@ -606,6 +606,8 @@ struct Server {
     authorization: parking_lot::Mutex<Option<String>>,
     /// Whether to refuse every request with a 401.
     demand_auth: std::sync::atomic::AtomicBool,
+    /// The `arguments` the last `tools/call` carried.
+    last_arguments: parking_lot::Mutex<Option<Value>>,
 }
 
 /// Binds a loopback port and serves `app`, returning its endpoint.
@@ -674,6 +676,7 @@ async fn handle(
         .into_response(),
         "tools/call" => {
             state.calls.fetch_add(1, Ordering::SeqCst);
+            *state.last_arguments.lock() = body["params"].get("arguments").cloned();
             axum::Json(json!({
                 "jsonrpc": "2.0",
                 "id": id,
@@ -763,6 +766,65 @@ async fn a_connected_server_reports_its_tools_and_answers_a_call() {
 
     assert!(!outcome.is_error);
     assert_eq!(state.calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_call_whose_arguments_arrive_json_encoded_reaches_the_server_as_an_object() {
+    // The reported failure: a model sent `"arguments": "{}"`, a JSON-encoded
+    // string where MCP requires an object.
+    let (endpoint, state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.connect("srv-1").await.unwrap();
+
+    let outcome = registry
+        .tool_call("srv-1", "forecast", json!("{}"))
+        .await
+        .expect("a stringified empty object is accepted");
+    assert!(!outcome.is_error);
+    assert_eq!(*state.last_arguments.lock(), Some(json!({})));
+
+    registry
+        .tool_call("srv-1", "forecast", json!("{\"when\":\"tomorrow\"}"))
+        .await
+        .expect("a stringified object is accepted");
+    assert_eq!(
+        *state.last_arguments.lock(),
+        Some(json!({ "when": "tomorrow" }))
+    );
+}
+
+#[tokio::test]
+async fn a_call_without_arguments_sends_an_empty_object() {
+    let (endpoint, state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.connect("srv-1").await.unwrap();
+
+    registry
+        .tool_call("srv-1", "forecast", Value::Null)
+        .await
+        .expect("null arguments are accepted");
+    assert_eq!(*state.last_arguments.lock(), Some(json!({})));
+}
+
+#[tokio::test]
+async fn a_call_whose_arguments_are_not_an_object_is_refused_before_the_server() {
+    let (endpoint, state) = mcp_server().await;
+    let record = remote_record("srv-1", &endpoint);
+    let registry = registry_with(&record);
+    registry.connect("srv-1").await.unwrap();
+
+    let error = registry
+        .tool_call("srv-1", "forecast", json!([1, 2]))
+        .await
+        .expect_err("an array is not arguments");
+    assert!(
+        matches!(&error, Error::InvalidArguments { tool, .. } if tool == "forecast"),
+        "{error:?}"
+    );
+    assert!(error.to_string().contains("an array"), "{error}");
+    assert_eq!(state.calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

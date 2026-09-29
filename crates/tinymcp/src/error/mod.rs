@@ -191,6 +191,32 @@ pub enum Error {
         server: String,
     },
 
+    /// A tool call's `arguments` could not be read as a JSON object.
+    ///
+    /// Refused before anything is sent: MCP requires an object, and a server
+    /// handed anything else answers with an error that names the protocol
+    /// rather than the value. The message is the reason
+    /// [`tinymcp_bus::normalize_tool_arguments`] gave, which names what
+    /// arrived, because it is read by the model that sent it.
+    #[error("invalid arguments for tool `{tool}`: {reason}")]
+    InvalidArguments {
+        /// The tool the call was aimed at.
+        tool: String,
+        /// Why the arguments were refused.
+        reason: tinymcp_bus::ArgsError,
+    },
+
+    /// An `mcp.json` document was refused.
+    ///
+    /// Rendered as the bare sentence, with no prefix: it is shown beside the
+    /// user's own text in an editor, and it already names the entry and the
+    /// field.
+    #[error("{detail}")]
+    ConfigDoc {
+        /// Which entry and field were refused, and why.
+        detail: String,
+    },
+
     /// A named server is not configured or not installed.
     #[error("unknown mcp server `{server}`")]
     UnknownServer {
@@ -257,9 +283,37 @@ pub enum Error {
         /// Which rule the argument broke.
         detail: String,
     },
+
+    /// Serving MCP failed to read a request or write a response.
+    ///
+    /// On stdio this is almost always the client going away: its end of the
+    /// pipe closed mid-conversation.
+    #[error("mcp server i/o failure: {source}")]
+    ServerIo {
+        /// What the stream reported.
+        #[source]
+        source: Box<std::io::Error>,
+    },
+
+    /// The MCP server could not listen on its address.
+    #[error("could not bind the mcp server on `{addr}`: {source}")]
+    ServerBind {
+        /// The address it tried to bind.
+        addr: std::net::SocketAddr,
+        /// What the operating system reported.
+        #[source]
+        source: Box<std::io::Error>,
+    },
 }
 
 impl Error {
+    /// Builds a [`Self::ServerIo`] from a stream failure.
+    pub(crate) fn server_io(source: std::io::Error) -> Self {
+        Self::ServerIo {
+            source: Box::new(source),
+        }
+    }
+
     /// Builds a [`Self::Transport`] for `endpoint`, redacting it.
     ///
     /// The URL is stripped from the underlying `reqwest` error before it is
@@ -325,7 +379,9 @@ impl Error {
             Self::Unauthorized { .. } => errors::UNAUTHORIZED,
             Self::MissingRuntime { .. } => errors::MISSING_RUNTIME,
             Self::Http { .. } => errors::HTTP,
-            Self::Transport { .. } => errors::TRANSPORT,
+            Self::Transport { .. } | Self::ServerIo { .. } | Self::ServerBind { .. } => {
+                errors::TRANSPORT
+            }
             Self::UnsupportedProtocolVersion { .. } => errors::UNSUPPORTED_PROTOCOL_VERSION,
             Self::MalformedResponse { .. } => errors::MALFORMED_RESPONSE,
             Self::Rpc { .. } => errors::RPC,
@@ -340,7 +396,9 @@ impl Error {
             Self::Store { .. } => errors::STORE,
             Self::StoreIo { .. } => errors::STORE_IO,
             Self::Bus { .. } => errors::BUS,
-            Self::InvalidArgument { .. } => errors::INVALID_ARGUMENT,
+            Self::InvalidArgument { .. }
+            | Self::InvalidArguments { .. }
+            | Self::ConfigDoc { .. } => errors::INVALID_ARGUMENT,
         }
     }
 

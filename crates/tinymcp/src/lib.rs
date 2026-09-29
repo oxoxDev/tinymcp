@@ -5,6 +5,10 @@
 //! HTTP or as a subprocess, browses the upstream registries, keeps track of what
 //! a user installed, supervises what it spawned, and records what got written.
 //!
+//! It also lets a host *be* one: [`server`] implements the protocol and the
+//! stdio transport around a host's [`McpServerHandler`], and — with the
+//! `server-http` feature — the Streamable HTTP + SSE transport.
+//!
 //! # Layout
 //!
 //! This is the implementation half of a two-crate workspace:
@@ -71,6 +75,7 @@ pub mod audit;
 pub mod config_servers;
 mod error;
 pub mod registry;
+pub mod server;
 #[cfg(all(feature = "module", not(feature = "static-link")))]
 mod tinybus_module;
 #[cfg(feature = "static-link")]
@@ -85,9 +90,16 @@ pub use config_servers::{
 };
 pub use error::{Error, Result};
 pub use registry::{
-    Connections, McpRegistry, OAuthFlow, ProbeOutcome, REMOTE_REQUEST_TIMEOUT, SecretRef,
-    SecretVault, ServerRef, Store, Supervisor, SupervisorConfig, SupervisorEvent, TickReport,
+    AppliedServer, ConfigApplyReport, Connections, McpRegistry, OAuthFlow, ProbeOutcome,
+    REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, SupervisedHost, Supervisor,
+    SupervisorConfig, SupervisorEvent, TickReport,
 };
+pub use server::{
+    ClientSession, McpServerHandler, RequestContext, RequestHeaders, ResourceSpec, ServerInfo,
+    ServerToolSpec, ToolCallError, run_stdio,
+};
+#[cfg(feature = "server-http")]
+pub use server::{HttpServerConfig, run_http, run_http_reporting};
 #[cfg(feature = "module")]
 pub use tinybus_module::{McpService, ModuleConfig};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
@@ -102,13 +114,14 @@ pub use tinymcp_bus;
 pub use tinymcp_bus::{
     AuthDetection, AuthKind, AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind,
     ConnStatus, ConnectedServerOverview, DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, ExtraFields,
-    HttpHeader, INTERFACE, InstalledServer, LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES,
-    MAX_LIST_LIMIT, MAX_TITLE_BYTES, METHODS, McpAuthChallenge, McpAuthConfig, McpAuthHint,
-    McpAuthorizationContext, McpClientConfig, McpClientIdentityConfig, McpClientInfo,
-    McpInitializeResult, McpProxyConfig, McpRegistryAuthConfig, McpRemoteTool, McpServerConfig,
-    McpServerToolResult, McpSseEvent, McpTool, McpToolContent, McpToolResult, McpWriteListQuery,
-    McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection,
-    RegistryListResponse, RegistryPagination, RegistryServerDetail, RegistryServerSummary,
-    SUPPORTED_PROTOCOL_VERSIONS, SearchCuration, ServerDetail, ServerStatus, Transport, config,
-    is_compatible, names, sanitize, version,
+    HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, HttpHeader, INTERFACE, InstalledServer,
+    LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES, MAX_LIST_LIMIT, MAX_TITLE_BYTES, METHODS,
+    McpAuthChallenge, McpAuthConfig, McpAuthHint, McpAuthorizationContext, McpClientConfig,
+    McpClientIdentityConfig, McpClientInfo, McpInitializeResult, McpProxyConfig,
+    McpRegistryAuthConfig, McpRemoteTool, McpServerConfig, McpServerToolResult, McpSseEvent,
+    McpTool, McpToolContent, McpToolResult, McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord,
+    OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection, RegistryListResponse,
+    RegistryPagination, RegistryServerDetail, RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS,
+    SearchCuration, ServerDetail, ServerStatus, Transport, config, is_compatible, names, sanitize,
+    version,
 };

@@ -24,9 +24,103 @@ use serde_json::{Value, json};
 
 use super::headers::parse_www_authenticate_challenge;
 use super::sse::{first_complete_sse_data, parse_sse_events};
-use super::{HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient};
+use super::{
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient,
+    fill_missing_metadata, metadata_matches_issuer, rfc8414_metadata_url,
+};
 use crate::Error;
 use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig};
+
+#[test]
+fn rfc8414_metadata_url_places_issuer_path_after_well_known_segment() {
+    assert_eq!(
+        rfc8414_metadata_url("https://example.com/tenant").unwrap(),
+        "https://example.com/.well-known/oauth-authorization-server/tenant"
+    );
+}
+
+#[test]
+fn rfc8414_metadata_url_preserves_issuer_path_trailing_slash() {
+    assert_eq!(
+        rfc8414_metadata_url("https://example.com/tenant/").unwrap(),
+        "https://example.com/.well-known/oauth-authorization-server/tenant/"
+    );
+}
+
+#[test]
+fn metadata_issuer_matching_preserves_trailing_slash_identity() {
+    let metadata = AuthorizationServerMetadata {
+        issuer: "https://example.com/tenant/".into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    };
+
+    assert!(!metadata_matches_issuer(
+        &metadata,
+        "https://example.com/tenant"
+    ));
+    assert!(metadata_matches_issuer(
+        &metadata,
+        "https://example.com/tenant/"
+    ));
+}
+
+#[test]
+fn mismatched_metadata_issuers_are_not_merged() {
+    let primary = AuthorizationServerMetadata {
+        issuer: "https://example.com/tenant".into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    };
+    let secondary = AuthorizationServerMetadata {
+        issuer: "https://example.com/tenant/".into(),
+        authorization_endpoint: Some("https://example.com/authorize".into()),
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    };
+
+    assert_eq!(
+        fill_missing_metadata(primary.clone(), secondary).authorization_endpoint,
+        None
+    );
+}
+
+#[test]
+fn metadata_merge_preserves_rfc_default_for_omitted_grant_types() {
+    let primary = AuthorizationServerMetadata {
+        issuer: "https://example.com".into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    };
+    let secondary = AuthorizationServerMetadata {
+        issuer: "https://example.com".into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: vec!["client_credentials".into()],
+        code_challenge_methods_supported: Vec::new(),
+    };
+
+    let merged = fill_missing_metadata(primary, secondary);
+
+    assert!(merged.grant_types_supported.is_empty());
+}
 
 // ---------------------------------------------------------------------------
 // Test server
@@ -669,6 +763,119 @@ async fn discovery_follows_the_challenge_to_both_metadata_documents() {
             .authorization_endpoint
             .as_deref(),
         Some(format!("{}/authorize", resource.authorization_servers[0]).as_str())
+    );
+}
+
+#[tokio::test]
+async fn complete_rfc8414_metadata_is_returned_without_oidc_discovery() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}", listener.local_addr().unwrap());
+    let metadata_issuer = issuer.clone();
+    let app = Router::new().route(
+        "/.well-known/oauth-authorization-server",
+        get(move || {
+            let issuer = metadata_issuer.clone();
+            async move {
+                Json(json!({
+                    "issuer": issuer,
+                    "authorization_endpoint": format!("{issuer}/authorize"),
+                    "token_endpoint": format!("{issuer}/token"),
+                    "registration_endpoint": format!("{issuer}/register"),
+                }))
+            }
+        }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let client = McpHttpClient::new(format!("{issuer}/"), 2).unwrap();
+
+    let metadata = client
+        .fetch_authorization_server_metadata(&issuer)
+        .await
+        .unwrap();
+
+    assert_eq!(metadata.issuer, issuer);
+    assert!(metadata.registration_endpoint.is_some());
+}
+
+#[tokio::test]
+async fn mismatched_rfc8414_and_oidc_issuers_are_rejected() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let issuer = format!("{base}/tenant");
+    let wrong_issuer = format!("{base}/other");
+    let oauth_issuer = wrong_issuer.clone();
+    let oidc_issuer = wrong_issuer.clone();
+    let app = Router::new()
+        .route(
+            "/.well-known/oauth-authorization-server/tenant",
+            get(move || {
+                let issuer = oauth_issuer.clone();
+                async move { Json(json!({ "issuer": issuer })) }
+            }),
+        )
+        .route(
+            "/tenant/.well-known/openid-configuration",
+            get(move || {
+                let issuer = oidc_issuer.clone();
+                async move { Json(json!({ "issuer": issuer })) }
+            }),
+        );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let client = McpHttpClient::new(format!("{base}/"), 2).unwrap();
+
+    let error = client
+        .fetch_authorization_server_metadata(&issuer)
+        .await
+        .unwrap_err();
+
+    assert!(error.to_string().contains("issuer did not match"));
+}
+
+#[tokio::test]
+async fn matching_oidc_metadata_replaces_mismatched_rfc8414_metadata() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let issuer = format!("{base}/tenant");
+    let oauth_issuer = format!("{base}/other");
+    let oidc_issuer = issuer.clone();
+    let app = Router::new()
+        .route(
+            "/.well-known/oauth-authorization-server/tenant",
+            get(move || {
+                let issuer = oauth_issuer.clone();
+                async move { Json(json!({ "issuer": issuer })) }
+            }),
+        )
+        .route(
+            "/tenant/.well-known/openid-configuration",
+            get(move || {
+                let issuer = oidc_issuer.clone();
+                async move {
+                    Json(json!({
+                        "issuer": issuer,
+                        "authorization_endpoint": "https://login.example/authorize",
+                    }))
+                }
+            }),
+        );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let client = McpHttpClient::new(format!("{base}/"), 2).unwrap();
+
+    let metadata = client
+        .fetch_authorization_server_metadata(&issuer)
+        .await
+        .unwrap();
+
+    assert_eq!(metadata.issuer, issuer);
+    assert_eq!(
+        metadata.authorization_endpoint.as_deref(),
+        Some("https://login.example/authorize")
     );
 }
 
