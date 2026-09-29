@@ -1,37 +1,31 @@
 //! The interface implementation.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 
 use serde_json::Value;
 
 use super::config::ModuleConfig;
+use super::directories::DirectoryOpener;
+use super::maintenance::Maintenance;
 use crate::audit::AuditStore;
 use crate::config_servers::McpServerRegistry;
 use crate::error::Result;
-use crate::registry::{AuthDetection, McpRegistry, SecretRef, Store};
+use crate::registry::{McpRegistry, SecretRef, Store, SupervisorConfig};
+use tinybus::Connection;
 use tinymcp_bus::{
-    ConnStatus, ConnectOutcome, InstallOutcome, InstalledServer, McpTool, McpWriteListQuery,
-    McpWriteRecord, NewMcpWriteRecord, RegistrySearchPage, RegistryServerDetail, RegistrySettings,
-    ToolCallOutcome, UpdateEnvOutcome,
+    AuthDetection, ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome,
+    InstalledServer, McpTool, McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord,
+    RegistrySearchPage, RegistrySettings, SearchCuration, ServerDetail, ToolCallOutcome,
+    UpdateEnvOutcome,
 };
-
-/// One server's detail plus the credentials installing it would need.
-///
-/// The two travel together because a caller rendering an install form needs
-/// both, and fetching them separately would mean two catalog round trips for
-/// one screen.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ServerDetail {
-    /// What the catalog says about the server.
-    pub server: RegistryServerDetail,
-    /// The credential names an install will actually need.
-    pub required_env_keys: Vec<String>,
-}
 
 /// Everything the interface serves.
 #[derive(Debug)]
 pub struct McpService {
-    dynamic: McpRegistry,
+    /// Shared with the background work, which outlives no call but needs the
+    /// same store and connections a call sees.
+    dynamic: Arc<McpRegistry>,
     /// The servers the host declared in its own configuration.
     ///
     /// Separate from the dynamic registry because nothing about them is
@@ -39,6 +33,14 @@ pub struct McpService {
     /// change only when its configuration does.
     static_servers: McpServerRegistry,
     audit: AuditStore,
+    /// The boot pass and supervisor, when they have been started.
+    ///
+    /// Held so they live exactly as long as the service; see
+    /// [`Self::with_maintenance`].
+    maintenance: Option<Maintenance>,
+    /// Present on the root object only: a directory opened through `Open`
+    /// cannot open further ones.
+    opener: Option<Arc<DirectoryOpener>>,
 }
 
 impl McpService {
@@ -57,12 +59,12 @@ impl McpService {
             None => (Store::open_in_memory()?, AuditStore::open_in_memory()?),
         };
 
-        let dynamic = McpRegistry::new(
+        let dynamic = Arc::new(McpRegistry::new(
             store,
             config.client.registry_auth.clone(),
             config.client.client_identity.clone(),
             config.client.proxy.clone(),
-        )?;
+        )?);
 
         let static_servers = McpServerRegistry::from_config(&config.client)?;
 
@@ -70,7 +72,51 @@ impl McpService {
             dynamic,
             static_servers,
             audit,
+            maintenance: None,
+            opener: None,
         })
+    }
+
+    /// Starts connecting the installed servers and keeping them connected.
+    ///
+    /// Returns without waiting for either: connecting is a handshake per
+    /// server, and a load that waited on it would turn one broken third-party
+    /// endpoint into a failed load. See [`super::maintenance`].
+    ///
+    /// Must be awaited from within a Tokio runtime, which a module's `setup`
+    /// always is. A service that never calls this — a host using the crate as
+    /// a plain library, or a test inspecting the interface — does no
+    /// background work at all.
+    pub async fn with_maintenance(mut self, config: SupervisorConfig) -> Self {
+        // A poll of `ready` keeps the signature `async`, which is what ties the
+        // spawn inside to a runtime rather than to whichever thread built the
+        // service.
+        std::future::ready(()).await;
+        self.maintenance = Some(Maintenance::start(Arc::clone(&self.dynamic), config));
+        self
+    }
+
+    /// Makes this the root object: able to serve further data directories
+    /// through `Open`.
+    #[must_use]
+    pub(super) fn with_opener(
+        mut self,
+        connection: Connection,
+        config: &ModuleConfig,
+        supervisor: SupervisorConfig,
+    ) -> Self {
+        self.opener = Some(Arc::new(DirectoryOpener::new(connection, config, supervisor)));
+        self
+    }
+
+    /// Waits for the boot connect pass to finish, when maintenance was started.
+    ///
+    /// `None` for a service that never started it.
+    pub async fn booted(&self) -> Option<crate::registry::BootOutcome> {
+        match &self.maintenance {
+            Some(maintenance) => Some(maintenance.booted().await),
+            None => None,
+        }
     }
 
     /// The dynamic registry, for a host using this crate directly.
@@ -96,8 +142,16 @@ impl McpService {
     /// The message is the error's own, which is already redacted: every variant
     /// carrying an endpoint holds the output of [`crate::redact_endpoint`], and
     /// the causes have had their URLs stripped.
+    ///
+    /// The bus name is [`crate::Error::wire_name`], so a host classifies on a
+    /// constant from [`tinymcp_bus::errors`] rather than on the message. The
+    /// message is unchanged and still carries its own wording — including the
+    /// status of a 401 — for whoever reads a re-reported string.
     fn failed(error: &crate::Error) -> tinybus::Error {
-        tinybus::Error::failed(error.to_string())
+        tinybus::Error::MethodFailed {
+            name: error.wire_name().to_string(),
+            message: error.to_string(),
+        }
     }
 
     /// Reads a map of credential names to handles.
@@ -132,6 +186,28 @@ impl McpService {
     ) -> tinybus::Result<RegistrySearchPage> {
         self.dynamic
             .registry_search(query.as_deref(), page.unwrap_or(1), page_size.unwrap_or(20))
+            .await
+            .map_err(|error| Self::failed(&error))
+    }
+
+    /// `(query, page, page_size, curation)`
+    ///
+    /// `curation` is a [`SearchCuration`]; `{}` applies none and answers as
+    /// `RegistrySearch` does.
+    async fn registry_search_curated(
+        &self,
+        query: Option<String>,
+        page: Option<u32>,
+        page_size: Option<u32>,
+        curation: SearchCuration,
+    ) -> tinybus::Result<RegistrySearchPage> {
+        self.dynamic
+            .registry_search_curated(
+                query.as_deref(),
+                page.unwrap_or(1),
+                page_size.unwrap_or(20),
+                curation,
+            )
             .await
             .map_err(|error| Self::failed(&error))
     }
@@ -251,6 +327,13 @@ impl McpService {
             .map_err(|error| Self::failed(&error))
     }
 
+    /// `()` — every connected server's identity and tools.
+    ///
+    /// Live connections only; a server that is not connected is absent.
+    async fn connected_overview(&self) -> tinybus::Result<Vec<ConnectedServerOverview>> {
+        Ok(self.dynamic.connected_overview().await)
+    }
+
     // -- authorization ------------------------------------------------------
 
     /// `(server_id)`
@@ -273,6 +356,20 @@ impl McpService {
     ) -> tinybus::Result<String> {
         self.dynamic
             .oauth_begin(&server_id, &redirect_uri)
+            .await
+            .map_err(|error| Self::failed(&error))
+    }
+
+    /// `(state, code)`
+    ///
+    /// Finishes the authorization `OAuthBegin` started. `state` is what the
+    /// redirect carried back; the module resolves it to the server it began
+    /// for, so the host never learns or supplies a server identifier here. A
+    /// stored token followed by a failed connect is a success with no tools.
+    #[tinybus(name = "OAuthComplete")]
+    async fn oauth_complete(&self, state: String, code: String) -> tinybus::Result<ConnectOutcome> {
+        self.dynamic
+            .oauth_complete(&state, &code)
             .await
             .map_err(|error| Self::failed(&error))
     }
@@ -431,10 +528,7 @@ impl McpService {
             .await
             .map_err(|error| Self::failed(&error))?;
 
-        Ok(ToolCallOutcome {
-            is_error: result.rendered.is_error,
-            result: result.raw_result,
-        })
+        Ok(ToolCallOutcome::from(result))
     }
 
     // -- the write-audit log -------------------------------------------------
@@ -455,6 +549,25 @@ impl McpService {
         std::future::ready(()).await;
         self.audit
             .list(&query)
+            .map_err(|error| Self::failed(&error))
+    }
+
+    // -- directories ----------------------------------------------------------
+
+    /// `(data_dir)` — returns the object path serving that directory.
+    ///
+    /// Answers only on the root object. Idempotent per directory; the load-time
+    /// directory answers with the root path itself.
+    async fn open(&self, data_dir: String) -> tinybus::Result<String> {
+        let Some(opener) = &self.opener else {
+            return Err(Self::failed(&crate::Error::invalid_argument(
+                "only the root object can open data directories",
+            )));
+        };
+
+        opener
+            .open(&data_dir)
+            .await
             .map_err(|error| Self::failed(&error))
     }
 }
