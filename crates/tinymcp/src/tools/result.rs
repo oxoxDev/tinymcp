@@ -42,7 +42,7 @@ pub fn tool_result(result: McpToolResult) -> ToolResult {
 
 /// An unrecognized block as JSON, its payload elided above
 /// [`MAX_LLM_BLOCK_BYTES`].
-fn elide_oversized_block(block: &McpToolContent) -> Value {
+pub(crate) fn elide_oversized_block(block: &McpToolContent) -> Value {
     let value = serde_json::to_value(block).unwrap_or(Value::Null);
     let serialized = serde_json::to_string(&value).unwrap_or_default();
     if serialized.len() <= MAX_LLM_BLOCK_BYTES {

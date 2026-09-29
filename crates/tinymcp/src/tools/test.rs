@@ -309,12 +309,21 @@ fn a_tool_declares_a_remote_effectful_call_grouped_by_server() {
 #[test]
 fn a_rendered_result_keeps_its_error_flag_and_markdown() {
     let result = tool_result(McpToolResult {
-        content: vec![McpToolContent::Text { text: "t".into() }],
+        content: vec![
+            McpToolContent::Text { text: "t".into() },
+            McpToolContent::Json {
+                data: json!({ "n": 1 }),
+            },
+        ],
         is_error: true,
         markdown_formatted: Some("**t**".into()),
     });
     assert!(result.is_error);
-    assert_eq!(result.text(), "t");
+    assert!(result.text().starts_with('t'));
+    assert!(matches!(
+        result.content[1],
+        tinytools::ToolContent::Json { .. }
+    ));
     assert_eq!(result.markdown_formatted.as_deref(), Some("**t**"));
 }
 
@@ -476,4 +485,48 @@ async fn a_configured_server_caches_its_listing_and_is_callable() {
     })
     .unwrap();
     assert!(edited.cached_tools("ticktick", &store).is_none());
+}
+
+#[test]
+fn a_tool_advertised_three_times_is_registered_twice_at_most() {
+    let source = McpToolSource::from_overview(&overview("a", "srv", &["dup", "dup", "dup"]));
+    let tools = tools_for(&[source], &unreachable());
+    assert_eq!(tools.len(), 2);
+    assert_ne!(tools[0].name(), tools[1].name());
+}
+
+#[test]
+fn a_blank_display_name_falls_back_to_the_family() {
+    let mut server = overview("a", "@acme/notes", &["list"]);
+    server.display_name = "  ".into();
+    let tool = tools_for(&[McpToolSource::from_overview(&server)], &unreachable())
+        .pop()
+        .unwrap();
+    assert!(
+        tool.description()
+            .starts_with("MCP server @acme/notes: list")
+    );
+    assert_eq!(tool.category(), tinytools::ToolCategory::Workflow);
+    assert_eq!(
+        tool.with_exposure(ToolExposure::Direct).exposure(),
+        ToolExposure::Direct
+    );
+}
+
+#[test]
+fn an_oversized_unmodelled_block_is_elided_but_keeps_its_type() {
+    let small = McpToolContent::Json {
+        data: json!({ "k": "v" }),
+    };
+    assert_eq!(
+        super::result::elide_oversized_block(&small),
+        serde_json::to_value(&small).unwrap()
+    );
+
+    let big = McpToolContent::Json {
+        data: json!("x".repeat(super::MAX_LLM_BLOCK_BYTES + 1)),
+    };
+    let elided = super::result::elide_oversized_block(&big);
+    assert_eq!(elided["type"], serde_json::to_value(&big).unwrap()["type"]);
+    assert!(elided["data"].as_str().unwrap().ends_with("bytes elided]"));
 }
