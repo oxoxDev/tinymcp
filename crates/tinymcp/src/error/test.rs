@@ -60,6 +60,10 @@ fn assorted_other_errors() -> Vec<Error> {
         Error::UnknownServer {
             server: "nope".into(),
         },
+        Error::InvalidArguments {
+            tool: "forecast".into(),
+            reason: tinymcp_bus::ArgsError::NotAnObject { actual: "a number" },
+        },
     ]
 }
 

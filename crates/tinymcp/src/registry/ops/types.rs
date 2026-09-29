@@ -14,7 +14,7 @@ use tinymcp_bus::{
     ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome, InstalledServer,
     McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool, RegistrySearchPage,
     RegistryServerDetail, RegistrySettings, ToolCallOutcome, Transport, UpdateEnvOutcome,
-    UpdateEnvStatus,
+    UpdateEnvStatus, normalize_tool_arguments,
 };
 
 /// The separator a source-routed name uses.
@@ -569,11 +569,17 @@ impl McpRegistry {
     /// A tool that reports failure comes back as a successful call with the
     /// flag set; see [`ToolCallOutcome`].
     ///
+    /// `arguments` is read through [`normalize_tool_arguments`]: `null` sends
+    /// an empty object, and an object JSON-encoded into a string — which some
+    /// models send for a nested object-typed field — is decoded rather than
+    /// forwarded as a string the server would reject.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::UnknownServer`] when either name is blank,
-    /// [`Error::NotConnected`] when the server has no live connection, plus
-    /// whatever the transport returns.
+    /// [`Error::InvalidArguments`] when `arguments` is not an object and not a
+    /// string holding one, [`Error::NotConnected`] when the server has no live
+    /// connection, plus whatever the transport returns.
     pub async fn tool_call(
         &self,
         server_id: &str,
@@ -582,10 +588,15 @@ impl McpRegistry {
     ) -> Result<ToolCallOutcome> {
         let server_id = require_non_empty(server_id, "server_id")?;
         let tool_name = require_non_empty(tool_name, "tool_name")?;
+        let arguments =
+            normalize_tool_arguments(arguments).map_err(|reason| Error::InvalidArguments {
+                tool: tool_name.to_string(),
+                reason,
+            })?;
 
         let result = self
             .connections
-            .call_tool(server_id, tool_name, arguments)
+            .call_tool(server_id, tool_name, Value::Object(arguments))
             .await?;
 
         Ok(ToolCallOutcome {
