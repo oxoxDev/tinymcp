@@ -594,21 +594,28 @@ fn static_fingerprint(server: &McpServerConfig) -> String {
         .map(|(key, value)| (key.as_str(), value.as_str()))
         .collect();
     env.sort_unstable_by_key(|(key, _)| *key);
+    let env_fingerprint: Vec<String> = env
+        .into_iter()
+        .flat_map(|(key, value)| [key.to_string(), value.to_string()])
+        .collect();
+    let env_parts: Vec<&str> = env_fingerprint.iter().map(String::as_str).collect();
     let mut allowed = normalize_tool_names(&server.allowed_tools);
     allowed.sort();
     let mut disallowed = normalize_tool_names(&server.disallowed_tools);
     disallowed.sort();
-    crate::registry::store::fingerprint(&[
-        server.endpoint.trim(),
-        server.command.trim(),
-        &server.args.join("\0"),
-        server.cwd.as_deref().unwrap_or_default(),
-        &env_keys.join("\0"),
-        &serde_json::to_string(&env).unwrap_or_default(),
-        &auth_fingerprint_identity(&server.auth),
-        &allowed.join("\0"),
-        &disallowed.join("\0"),
-    ])
+    let mut parts = vec![
+        server.endpoint.trim().to_string(),
+        server.command.trim().to_string(),
+        server.args.join("\0"),
+        server.cwd.clone().unwrap_or_default(),
+        env_keys.join("\0"),
+        auth_fingerprint_identity(&server.auth),
+        allowed.join("\0"),
+        disallowed.join("\0"),
+    ];
+    parts.extend(env_fingerprint);
+    let references: Vec<&str> = parts.iter().map(String::as_str).collect();
+    crate::registry::store::fingerprint(&references)
 }
 
 /// Stable, non-secret identity for the configured authentication scheme.

@@ -85,7 +85,8 @@ pub fn tools_for(
                 base_name
             };
             if taken.contains(&name) {
-                name = naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);
+                name =
+                    naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);
             }
             if !taken.insert(name.clone()) {
                 continue;

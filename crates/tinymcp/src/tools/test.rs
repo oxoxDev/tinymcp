@@ -251,16 +251,27 @@ fn colliding_names_are_disambiguated_deterministically() {
     let tools = tools_for(&sources, &unreachable());
     let names: Vec<&str> = tools.iter().map(Tool::name).collect();
     assert_eq!(names.len(), 2, "the blank name is skipped");
-    assert_eq!(names[0], "mcp_weather_forecast");
     assert!(
-        names[1].starts_with("mcp_weather_forecast_"),
-        "{}",
-        names[1]
+        names
+            .iter()
+            .all(|name| name.starts_with("mcp_weather_forecast_"))
     );
     assert_eq!(tools[0].server_id(), "a");
 
     let again = tools_for(&sources, &unreachable());
-    assert_eq!(again[1].name(), names[1]);
+    assert_eq!(again.iter().map(Tool::name).collect::<Vec<_>>(), names);
+
+    let added = [
+        McpToolSource::from_overview(&overview("0", "@zero/weather", &["forecast"])),
+        sources[0].clone(),
+        sources[1].clone(),
+    ];
+    let after_add = tools_for(&added, &unreachable());
+    for original in &tools {
+        assert!(after_add.iter().any(|candidate| {
+            candidate.server_id() == original.server_id() && candidate.name() == original.name()
+        }));
+    }
 }
 
 #[test]

@@ -276,7 +276,9 @@ impl McpRegistry {
     ) -> Result<InstallOutcome> {
         if !env.is_empty() {
             let mut merged = self.store.load_env_values(&existing.server_id)?;
-            let credentials_changed = env.iter().any(|(key, value)| merged.get(key) != Some(value));
+            let credentials_changed = env
+                .iter()
+                .any(|(key, value)| merged.get(key) != Some(value));
             merged.extend(env.clone());
             self.store.set_env_values(&existing.server_id, &merged)?;
             if credentials_changed {
