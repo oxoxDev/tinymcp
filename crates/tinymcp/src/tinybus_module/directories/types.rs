@@ -139,7 +139,7 @@ impl DirectoryOpener {
 /// The fair-queue behavior is `tokio`'s documented policy for its `RwLock`. If
 /// `TinyBus` stops holding the tree lock across a handler, the first poll simply
 /// completes and the task is never spawned.
-async fn serve_without_blocking_the_reply(
+pub(super) async fn serve_without_blocking_the_reply(
     connection: &Connection,
     path: tinybus::ObjectPath,
     service: McpService,
