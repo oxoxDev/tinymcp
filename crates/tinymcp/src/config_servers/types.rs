@@ -645,7 +645,9 @@ fn auth_fingerprint_parts(auth: &McpAuthConfig) -> Vec<String> {
             parts.push(username.clone());
             parts.push(password.clone());
         }
-        McpAuthConfig::Header { value, .. } => parts.push(value.clone()),
+        McpAuthConfig::Header { value, .. } | McpAuthConfig::QueryParam { value, .. } => {
+            parts.push(value.clone());
+        }
         McpAuthConfig::Headers { headers } => {
             let mut values: Vec<(&str, &str)> = headers
                 .iter()
@@ -657,7 +659,6 @@ fn auth_fingerprint_parts(auth: &McpAuthConfig) -> Vec<String> {
                 parts.push(value.to_string());
             }
         }
-        McpAuthConfig::QueryParam { value, .. } => parts.push(value.clone()),
         McpAuthConfig::None | _ => {}
     }
     parts
