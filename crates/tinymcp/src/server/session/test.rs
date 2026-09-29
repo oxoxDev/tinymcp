@@ -4,7 +4,7 @@
 
 use serde_json::json;
 
-use super::ClientSession;
+use super::{ClientSession, object_keys};
 
 #[test]
 fn normalize_client_name_accepts_ascii_client_names() {
@@ -69,4 +69,11 @@ fn the_first_observation_wins() {
     anonymous.observe_initialize_params(&json!({}));
     anonymous.observe_initialize_params(&json!({"clientInfo": {"name": "Cursor"}}));
     assert_eq!(anonymous.source_type(), "mcp");
+}
+
+#[test]
+fn diagnostic_keys_are_sorted_and_empty_for_non_objects() {
+    assert_eq!(object_keys(&json!({"b": 1, "a": 2})), ["a", "b"]);
+    assert!(object_keys(&json!(null)).is_empty());
+    assert!(object_keys(&json!([1])).is_empty());
 }
