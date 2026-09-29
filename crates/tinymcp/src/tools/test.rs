@@ -249,7 +249,7 @@ fn colliding_names_are_disambiguated_deterministically() {
         McpToolSource::from_overview(&overview("a", "@one/weather", &["forecast", "  "])),
     ];
     let tools = tools_for(&sources, &unreachable());
-    let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
+    let names: Vec<&str> = tools.iter().map(Tool::name).collect();
     assert_eq!(names.len(), 2, "the blank name is skipped");
     assert_eq!(names[0], "mcp_weather_forecast");
     assert!(
@@ -267,7 +267,7 @@ fn colliding_names_are_disambiguated_deterministically() {
 fn exposure_defaults_to_deferred_with_direct_opt_ins() {
     let source = McpToolSource::from_overview(&overview("a", "srv", &["one", "two"]))
         .with_exposure(McpExposure::deferred_except(["two"]));
-    let tools = tools_for(&[source.clone()], &unreachable());
+    let tools = tools_for(std::slice::from_ref(&source), &unreachable());
     assert_eq!(tools[0].exposure(), ToolExposure::Deferred);
     assert_eq!(tools[1].exposure(), ToolExposure::Direct);
 
@@ -346,7 +346,7 @@ async fn an_installed_server_is_callable_by_name_and_cached_for_the_next_boot() 
             .map(McpToolSource::from_overview)
             .collect();
         let tools = tools_for(&sources, &invoker);
-        let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
+        let names: Vec<&str> = tools.iter().map(Tool::name).collect();
         assert_eq!(names, ["mcp_ticktick_failing", "mcp_ticktick_read_goals"]);
 
         let read = tools

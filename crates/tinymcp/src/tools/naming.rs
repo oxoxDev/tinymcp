@@ -125,7 +125,7 @@ pub fn disambiguated_tool_name(server_id: &str, server_label: &str, tool: &str) 
 /// The name scheme used before readable names: `mcp_<tool slug>_<12 hex>`.
 ///
 /// Kept so a conversation that recorded one of these names still resolves it.
-/// Byte-for-byte what earlier OpenHuman builds produced.
+/// Byte-for-byte what earlier `OpenHuman` builds produced.
 #[must_use]
 pub fn legacy_tool_name(server_id: &str, tool: &str) -> String {
     let raw: String = tool
@@ -174,5 +174,5 @@ fn non_empty(value: String, fallback: &str) -> String {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    crate::registry::store::hex(bytes)
 }

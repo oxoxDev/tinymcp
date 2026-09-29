@@ -37,8 +37,10 @@ pub(crate) mod schema;
 mod tool_cache;
 mod types;
 
-pub(crate) use tool_cache::fingerprint;
 pub use tool_cache::{CachedTools, installed_fingerprint, static_cache_key};
+pub(crate) use tool_cache::fingerprint;
+#[cfg(feature = "tools")]
+pub(crate) use tool_cache::hex;
 pub use types::Store;
 
 #[cfg(test)]

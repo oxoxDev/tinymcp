@@ -75,11 +75,18 @@ pub(crate) fn fingerprint(parts: &[&str]) -> String {
         hasher.update((part.len() as u64).to_le_bytes());
         hasher.update(part.as_bytes());
     }
-    hasher
-        .finalize()
+    hex(&hasher.finalize())
+}
+
+/// Lower-case hex of `bytes`.
+pub(crate) fn hex(bytes: &[u8]) -> String {
+    use std::fmt::Write as _;
+    bytes
         .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+        .fold(String::with_capacity(bytes.len() * 2), |mut out, byte| {
+            let _ = write!(out, "{byte:02x}");
+            out
+        })
 }
 
 impl Store {
