@@ -329,3 +329,35 @@ async fn the_number_of_served_directories_is_bounded() {
     .unwrap();
     assert!(again.starts_with(DIRECTORY_OBJECT_PREFIX));
 }
+
+#[tokio::test]
+async fn opener_debug_output_does_not_expose_directory_or_client_data() {
+    let connection = serve_root(&ModuleConfig::default()).await;
+    let opener = super::DirectoryOpener::new(
+        connection,
+        &ModuleConfig::default(),
+        SupervisorConfig::default(),
+    )
+    .unwrap();
+    let debug = format!("{opener:?}");
+    assert!(debug.contains("DirectoryOpener"));
+    assert!(!debug.contains("data_dir"));
+}
+
+#[tokio::test]
+async fn opening_a_directory_propagates_store_creation_errors() {
+    let connection = serve_root(&ModuleConfig::default()).await;
+    let opener = super::DirectoryOpener::new(
+        connection,
+        &ModuleConfig::default(),
+        SupervisorConfig::default(),
+    )
+    .unwrap();
+    let parent = tempfile::NamedTempFile::new().unwrap();
+    let path = parent.path().join("not-a-directory");
+    let error = opener.open(path.to_str().unwrap()).await.unwrap_err();
+    assert!(matches!(
+        error,
+        crate::Error::StoreIo { .. } | crate::Error::Store { .. }
+    ));
+}
