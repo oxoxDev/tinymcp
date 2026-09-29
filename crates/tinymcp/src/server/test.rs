@@ -177,7 +177,10 @@ async fn a_handler_without_resources_lists_none_and_reads_none() {
     let handler = Minimal;
     assert_eq!(handler.source_type_prefix(), "mcp");
     assert!(handler.list_resources().is_empty());
-    let err = handler.read_resource("demo://a").await.expect_err("no resources");
+    let err = handler
+        .read_resource("demo://a")
+        .await
+        .expect_err("no resources");
     assert_eq!(
         err,
         ToolCallError::ResourceNotFound("no resource with uri `demo://a`".to_string())

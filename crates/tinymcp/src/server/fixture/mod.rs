@@ -93,7 +93,9 @@ impl McpServerHandler for DemoHandler {
     fn read_resource<'a>(&'a self, uri: &'a str) -> BoxFuture<'a, Result<Value, ToolCallError>> {
         Box::pin(async move {
             if uri == "demo://readme" {
-                Ok(json!({"contents": [{"uri": uri, "mimeType": "text/markdown", "text": "# Demo"}]}))
+                Ok(
+                    json!({"contents": [{"uri": uri, "mimeType": "text/markdown", "text": "# Demo"}]}),
+                )
             } else {
                 Err(ToolCallError::ResourceNotFound(format!(
                     "no resource with uri `{uri}`"

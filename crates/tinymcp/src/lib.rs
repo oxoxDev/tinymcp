@@ -92,14 +92,14 @@ pub use registry::{
     ProbeOutcome, REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, SupervisedHost,
     Supervisor, SupervisorConfig, SupervisorEvent, TickReport,
 };
-#[cfg(feature = "module")]
-pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};
-#[cfg(feature = "server-http")]
-pub use server::{HttpServerConfig, run_http, run_http_reporting};
 pub use server::{
     ClientSession, McpServerHandler, RequestContext, RequestHeaders, ResourceSpec, ServerInfo,
     ServerToolSpec, ToolCallError, run_stdio,
 };
+#[cfg(feature = "server-http")]
+pub use server::{HttpServerConfig, run_http, run_http_reporting};
+#[cfg(feature = "module")]
+pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
 pub use transport::stdio::McpStdioClient;
 pub use transport::{redact_endpoint, render_tool_result};

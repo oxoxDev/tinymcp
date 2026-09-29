@@ -70,12 +70,19 @@ async fn initialize_echoes_every_supported_version_and_falls_back_to_latest() {
         .await;
         assert_eq!(response["result"]["protocolVersion"], *version);
     }
-    for params in [json!({"protocolVersion": "1999-01-01"}), json!({}), json!(null)] {
+    for params in [
+        json!({"protocolVersion": "1999-01-01"}),
+        json!({}),
+        json!(null),
+    ] {
         let response = one(json!({
             "jsonrpc": "2.0", "id": "init", "method": "initialize", "params": params
         }))
         .await;
-        assert_eq!(response["result"]["protocolVersion"], LATEST_PROTOCOL_VERSION);
+        assert_eq!(
+            response["result"]["protocolVersion"],
+            LATEST_PROTOCOL_VERSION
+        );
     }
 }
 
@@ -112,7 +119,9 @@ async fn initialize_provenance_reaches_later_tool_calls_on_the_session() {
 #[tokio::test]
 async fn ping_answers_an_empty_result() {
     assert_eq!(
-        line(r#"{"jsonrpc":"2.0","id":"abc","method":"ping"}"#).await.as_deref(),
+        line(r#"{"jsonrpc":"2.0","id":"abc","method":"ping"}"#)
+            .await
+            .as_deref(),
         Some(r#"{"id":"abc","jsonrpc":"2.0","result":{}}"#)
     );
 }
@@ -195,7 +204,9 @@ async fn unparseable_lines_answer_a_parse_error_with_a_null_id() {
 #[tokio::test]
 async fn unknown_methods_answer_method_not_found() {
     assert_eq!(
-        line(r#"{"jsonrpc":"2.0","id":1,"method":"prompts/list"}"#).await.as_deref(),
+        line(r#"{"jsonrpc":"2.0","id":1,"method":"prompts/list"}"#)
+            .await
+            .as_deref(),
         Some(
             r#"{"error":{"code":-32601,"data":"unsupported MCP method `prompts/list`","message":"Method not found"},"id":1,"jsonrpc":"2.0"}"#
         )
@@ -213,7 +224,9 @@ async fn a_batch_answers_its_requests_in_order_as_one_array_line() {
 #[tokio::test]
 async fn a_batch_of_one_request_answers_a_bare_object_line() {
     assert_eq!(
-        line(r#"[{"jsonrpc":"2.0","id":9,"method":"ping"}]"#).await.as_deref(),
+        line(r#"[{"jsonrpc":"2.0","id":9,"method":"ping"}]"#)
+            .await
+            .as_deref(),
         Some(r#"{"id":9,"jsonrpc":"2.0","result":{}}"#)
     );
 }
@@ -225,7 +238,9 @@ async fn a_batch_of_one_request_answers_a_bare_object_line() {
 #[tokio::test]
 async fn tools_list_renders_the_handler_catalog() {
     assert_eq!(
-        line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).await.as_deref(),
+        line(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#)
+            .await
+            .as_deref(),
         Some(
             r#"{"id":2,"jsonrpc":"2.0","result":{"tools":[{"annotations":{"readOnlyHint":true},"description":"Echo the arguments.","inputSchema":{"type":"object"},"name":"echo","title":"Echo"},{"description":"No title.","inputSchema":{},"name":"bare"}]}}"#
         )
@@ -307,7 +322,10 @@ async fn tools_call_passes_transport_headers_to_the_handler() {
     )
     .await;
     assert_eq!(responses[0]["result"]["structuredContent"]["depth"], "3");
-    assert_eq!(responses[0]["result"]["structuredContent"]["source_type"], "demo");
+    assert_eq!(
+        responses[0]["result"]["structuredContent"]["source_type"],
+        "demo"
+    );
 }
 
 #[tokio::test]
@@ -351,7 +369,9 @@ async fn tools_call_answers_results_and_maps_handler_errors_to_codes() {
 #[tokio::test]
 async fn resources_list_renders_the_handler_catalog() {
     assert_eq!(
-        line(r#"{"jsonrpc":"2.0","id":10,"method":"resources/list"}"#).await.as_deref(),
+        line(r#"{"jsonrpc":"2.0","id":10,"method":"resources/list"}"#)
+            .await
+            .as_deref(),
         Some(
             r#"{"id":10,"jsonrpc":"2.0","result":{"resources":[{"description":"The readme.","mimeType":"text/markdown","name":"Readme","uri":"demo://readme"}]}}"#
         )
@@ -371,7 +391,11 @@ async fn resources_read_answers_the_handler_contents() {
 #[tokio::test]
 async fn resources_read_rejects_unknown_and_missing_uris() {
     assert_eq!(
-        line(r#"{"jsonrpc":"2.0","id":12,"method":"resources/read","params":{"uri":"demo://nope"}}"#).await.as_deref(),
+        line(
+            r#"{"jsonrpc":"2.0","id":12,"method":"resources/read","params":{"uri":"demo://nope"}}"#
+        )
+        .await
+        .as_deref(),
         Some(
             r#"{"error":{"code":-32002,"data":"no resource with uri `demo://nope`","message":"Resource not found"},"id":12,"jsonrpc":"2.0"}"#
         )

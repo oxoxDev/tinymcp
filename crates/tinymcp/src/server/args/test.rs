@@ -77,7 +77,10 @@ fn required_strings_are_trimmed_and_must_be_present_and_non_blank() {
 #[test]
 fn optional_strings_distinguish_absent_from_blank() {
     let map = args(json!({"a": " v ", "null": null, "blank": " ", "number": 1}));
-    assert_eq!(optional_non_empty_string(&map, "a").unwrap().as_deref(), Some("v"));
+    assert_eq!(
+        optional_non_empty_string(&map, "a").unwrap().as_deref(),
+        Some("v")
+    );
     assert_eq!(optional_non_empty_string(&map, "missing").unwrap(), None);
     assert_eq!(optional_non_empty_string(&map, "null").unwrap(), None);
     assert_eq!(
@@ -168,7 +171,10 @@ fn optional_u64_rejects_negatives() {
 #[test]
 fn a_defaulted_positive_bound_rejects_rather_than_clamps() {
     let map = args(json!({"at": 50, "over": 51, "zero": 0, "null": null, "text": "5"}));
-    assert_eq!(positive_u64_or_default(&map, "missing", 10, 50).unwrap(), 10);
+    assert_eq!(
+        positive_u64_or_default(&map, "missing", 10, 50).unwrap(),
+        10
+    );
     assert_eq!(positive_u64_or_default(&map, "at", 10, 50).unwrap(), 50);
     assert_eq!(
         invalid(positive_u64_or_default(&map, "over", 10, 50)),

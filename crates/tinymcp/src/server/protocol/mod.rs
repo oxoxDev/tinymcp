@@ -240,7 +240,9 @@ async fn read_resource(handler: &dyn McpServerHandler, id: Value, params: &Value
             id,
             INVALID_PARAMS,
             "Invalid params",
-            Some(json!("resources/read params.uri must be a non-empty string")),
+            Some(json!(
+                "resources/read params.uri must be a non-empty string"
+            )),
         );
     };
     match handler.read_resource(uri).await {

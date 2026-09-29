@@ -230,8 +230,19 @@ async fn session_and_protocol_rejections_are_plain_text() {
     )
     .await;
 
-    let unknown = post(&endpoint, Some("nope"), Some(LATEST_PROTOCOL_VERSION), &ping).await;
-    assert_text(unknown, StatusCode::NOT_FOUND, "unknown or expired MCP session").await;
+    let unknown = post(
+        &endpoint,
+        Some("nope"),
+        Some(LATEST_PROTOCOL_VERSION),
+        &ping,
+    )
+    .await;
+    assert_text(
+        unknown,
+        StatusCode::NOT_FOUND,
+        "unknown or expired MCP session",
+    )
+    .await;
 
     let session = initialize(&endpoint).await;
     for protocol in [Some("2024-11-05"), None] {
@@ -314,7 +325,9 @@ async fn request_headers_reach_the_handler_and_each_post_is_its_own_session() {
         .header(HEADER_SESSION_ID, session.as_str())
         .header(HEADER_PROTOCOL_VERSION, LATEST_PROTOCOL_VERSION)
         .header(ECHOED_HEADER, "2")
-        .json(&json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "echo"}}))
+        .json(
+            &json!({"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": "echo"}}),
+        )
         .send()
         .await
         .unwrap();
@@ -352,14 +365,24 @@ async fn get_and_delete_follow_the_session_lifecycle() {
     let http = Client::new();
 
     let get_missing = http.get(&endpoint).send().await.unwrap();
-    assert_text(get_missing, StatusCode::BAD_REQUEST, "missing Mcp-Session-Id header").await;
+    assert_text(
+        get_missing,
+        StatusCode::BAD_REQUEST,
+        "missing Mcp-Session-Id header",
+    )
+    .await;
     let get_unknown = http
         .get(&endpoint)
         .header(HEADER_SESSION_ID, "nope")
         .send()
         .await
         .unwrap();
-    assert_text(get_unknown, StatusCode::NOT_FOUND, "unknown or expired MCP session").await;
+    assert_text(
+        get_unknown,
+        StatusCode::NOT_FOUND,
+        "unknown or expired MCP session",
+    )
+    .await;
 
     let session = initialize(&endpoint).await;
     let get_mismatch = http
@@ -400,7 +423,12 @@ async fn get_and_delete_follow_the_session_lifecycle() {
         &json!({"jsonrpc": "2.0", "id": 2, "method": "ping"}),
     )
     .await;
-    assert_text(after, StatusCode::NOT_FOUND, "unknown or expired MCP session").await;
+    assert_text(
+        after,
+        StatusCode::NOT_FOUND,
+        "unknown or expired MCP session",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -473,7 +501,13 @@ async fn bearer_auth_rejects_with_plain_text_before_anything_else() {
 
     // The auth rejection sets a bare `text/plain`, unlike the other rejections.
     let missing = post(&endpoint, None, None, &init_body("golden")).await;
-    assert_content(missing, StatusCode::UNAUTHORIZED, "text/plain", "unauthorized").await;
+    assert_content(
+        missing,
+        StatusCode::UNAUTHORIZED,
+        "text/plain",
+        "unauthorized",
+    )
+    .await;
     let wrong = http
         .post(&endpoint)
         .bearer_auth("wrong")

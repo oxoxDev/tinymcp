@@ -128,7 +128,11 @@ pub struct ServerToolSpec {
 impl ServerToolSpec {
     /// A tool with no title and no annotations.
     #[must_use]
-    pub fn new(name: impl Into<String>, description: impl Into<String>, input_schema: Value) -> Self {
+    pub fn new(
+        name: impl Into<String>,
+        description: impl Into<String>,
+        input_schema: Value,
+    ) -> Self {
         Self {
             name: name.into(),
             title: None,
