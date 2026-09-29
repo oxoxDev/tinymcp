@@ -8,13 +8,14 @@ use serde_json::Value;
 use super::install::{build_install_transport, collect_required_env_keys, pick_connection};
 use crate::error::{Error, Result};
 use crate::registry::{
-    AuthDetection, Connections, OAuthFlow, Registries, SecretRef, SecretVault, Store,
+    BootOutcome, Connections, OAuthFlow, Registries, SecretRef, SecretVault, Store, Supervisor,
+    SupervisorConfig, curation,
 };
 use tinymcp_bus::{
-    ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome, InstalledServer,
+    AuthDetection, ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome, InstalledServer,
     McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool, RegistrySearchPage,
-    RegistryServerDetail, RegistrySettings, ToolCallOutcome, Transport, UpdateEnvOutcome,
-    UpdateEnvStatus,
+    RegistryServerDetail, RegistrySettings, SearchCuration, ToolCallOutcome, Transport,
+    UpdateEnvOutcome, UpdateEnvStatus,
 };
 
 /// The separator a source-routed name uses.
@@ -89,6 +90,32 @@ impl McpRegistry {
         &self.oauth
     }
 
+    /// Connects every enabled install, as a host does when it comes up.
+    ///
+    /// Never fails; see [`crate::registry::boot`] for why startup does not stop
+    /// for a server that will not connect.
+    pub async fn connect_installed(&self) -> BootOutcome {
+        crate::registry::connect_installed_servers(
+            &self.store,
+            &self.connections,
+            &self.oauth,
+            &self.identity,
+            self.proxy.as_ref(),
+        )
+        .await
+    }
+
+    /// Builds a [`Supervisor`] that reconnects this registry's installs with
+    /// the same client identity and proxy it connects with.
+    ///
+    /// Drive it with [`Supervisor::run`] over [`Self::store`],
+    /// [`Self::connections`] and [`Self::oauth`], or step it with
+    /// [`Supervisor::tick`].
+    #[must_use]
+    pub fn supervisor(&self, config: SupervisorConfig) -> Supervisor {
+        Supervisor::new(config, self.identity.clone(), self.proxy.clone())
+    }
+
     // -- browsing -----------------------------------------------------------
 
     /// Searches every catalog taking part in search, merged.
@@ -126,6 +153,37 @@ impl McpRegistry {
             page: page.max(1),
             total_pages,
         })
+    }
+
+    /// Searches like [`Self::registry_search`], then applies the curation the
+    /// caller asked for.
+    ///
+    /// [`crate::registry::curation`] does the tagging and the ordering; this is
+    /// the seam that lets a caller reaching the module over the bus have it
+    /// applied, since it cannot call those functions itself and the list they
+    /// consult is the module's own data. Tagging runs before ordering, so
+    /// `official_first` sees the flags `tag_official` just set.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::registry_search`].
+    pub async fn registry_search_curated(
+        &self,
+        query: Option<&str>,
+        page: u32,
+        page_size: u32,
+        curation: SearchCuration,
+    ) -> Result<RegistrySearchPage> {
+        let mut results = self.registry_search(query, page, page_size).await?;
+
+        if curation.tag_official {
+            curation::tag_official(&mut results.servers);
+        }
+        if curation.official_first {
+            curation::float_official_first(&mut results.servers);
+        }
+
+        Ok(results)
     }
 
     /// Fetches one server's detail, and the credential names installing it
@@ -656,10 +714,7 @@ impl McpRegistry {
             .call_tool(server_id, tool_name, arguments)
             .await?;
 
-        Ok(ToolCallOutcome {
-            is_error: result.rendered.is_error,
-            result: result.raw_result,
-        })
+        Ok(ToolCallOutcome::from(result))
     }
 
     /// Gathers what a model would need to help a user configure a server.
