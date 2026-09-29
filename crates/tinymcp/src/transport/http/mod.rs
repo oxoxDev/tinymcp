@@ -815,7 +815,7 @@ impl McpHttpClient {
         issuer: &str,
     ) -> Result<AuthorizationServerMetadata> {
         let issuer_url = issuer.trim_end_matches('/');
-        let oauth_url = rfc8414_metadata_url(issuer_url)?;
+        let oauth_url = rfc8414_metadata_url(issuer)?;
         let oidc_url = format!("{issuer_url}/.well-known/openid-configuration");
 
         let oauth = self
@@ -953,7 +953,7 @@ fn rfc8414_metadata_url(issuer: &str) -> Result<String> {
     let mut url = Url::parse(issuer).map_err(|error| {
         Error::malformed(format!("invalid authorization server issuer: {error}"))
     })?;
-    let path = url.path().trim_end_matches('/');
+    let path = if url.path() == "/" { "" } else { url.path() };
     url.set_path(&format!("/.well-known/oauth-authorization-server{path}"));
     url.set_query(None);
     url.set_fragment(None);

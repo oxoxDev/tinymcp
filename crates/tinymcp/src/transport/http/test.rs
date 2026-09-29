@@ -40,6 +40,14 @@ fn rfc8414_metadata_url_places_issuer_path_after_well_known_segment() {
 }
 
 #[test]
+fn rfc8414_metadata_url_preserves_issuer_path_trailing_slash() {
+    assert_eq!(
+        rfc8414_metadata_url("https://example.com/tenant/").unwrap(),
+        "https://example.com/.well-known/oauth-authorization-server/tenant/"
+    );
+}
+
+#[test]
 fn metadata_issuer_matching_preserves_trailing_slash_identity() {
     let metadata = AuthorizationServerMetadata {
         issuer: "https://example.com/tenant/".into(),
