@@ -804,22 +804,45 @@ impl McpHttpClient {
 
     /// Reads an authorization server's metadata.
     ///
-    /// Tries the `OpenID` Connect discovery document first and falls back to the
-    /// OAuth authorization-server one. Servers publish one or the other and
-    /// rarely say which.
+    /// Prefers the OAuth authorization-server document (RFC 8414), as the MCP
+    /// authorization spec does, and falls back to `OpenID` Connect discovery.
+    /// A server that publishes both may leave fields out of one of them — for
+    /// example an OIDC document without the `registration_endpoint` that
+    /// dynamic client registration needs — so a complete RFC 8414 document
+    /// wins outright, and an incomplete one has its gaps filled from OIDC.
     async fn fetch_authorization_server_metadata(
         &self,
         issuer: &str,
     ) -> Result<AuthorizationServerMetadata> {
         let trimmed = issuer.trim_end_matches('/');
 
-        let oidc = format!("{trimmed}/.well-known/openid-configuration");
-        if let Ok(metadata) = self.fetch_json::<AuthorizationServerMetadata>(&oidc).await {
-            return Ok(metadata);
-        }
+        let oauth_url = format!("{trimmed}/.well-known/oauth-authorization-server");
+        let oidc_url = format!("{trimmed}/.well-known/openid-configuration");
 
-        let oauth = format!("{trimmed}/.well-known/oauth-authorization-server");
-        self.fetch_json::<AuthorizationServerMetadata>(&oauth).await
+        let oauth = self.fetch_json::<AuthorizationServerMetadata>(&oauth_url).await;
+        match oauth {
+            Ok(metadata) if has_every_endpoint(&metadata) => Ok(metadata),
+            Ok(metadata) => {
+                match self.fetch_json::<AuthorizationServerMetadata>(&oidc_url).await {
+                    Ok(oidc) => Ok(fill_missing_metadata(metadata, oidc)),
+                    Err(error) => {
+                        tracing::debug!(
+                            issuer = %redact_endpoint(trimmed),
+                            "[mcp] oidc discovery unavailable to complete rfc 8414 metadata: {error}"
+                        );
+                        Ok(metadata)
+                    }
+                }
+            }
+            Err(oauth_error) => {
+                tracing::debug!(
+                    issuer = %redact_endpoint(trimmed),
+                    "[mcp] rfc 8414 metadata unavailable, trying oidc discovery: {oauth_error}"
+                );
+                self.fetch_json::<AuthorizationServerMetadata>(&oidc_url)
+                    .await
+            }
+        }
     }
 
     /// Clears every trace of the current session.
@@ -934,6 +957,45 @@ impl RequestOptions {
 struct ResponseEnvelope {
     result: Value,
     session_id: Option<String>,
+}
+
+
+/// Whether metadata names every endpoint the browser sign-in flow needs.
+fn has_every_endpoint(metadata: &AuthorizationServerMetadata) -> bool {
+    metadata.authorization_endpoint.is_some()
+        && metadata.token_endpoint.is_some()
+        && metadata.registration_endpoint.is_some()
+}
+
+/// Fills what `primary` leaves out from `secondary`, never overriding it.
+///
+/// Only when both documents describe the same issuer: metadata for another
+/// issuer is not a trustworthy source of endpoints.
+fn fill_missing_metadata(
+    mut primary: AuthorizationServerMetadata,
+    secondary: AuthorizationServerMetadata,
+) -> AuthorizationServerMetadata {
+    if primary.issuer.trim_end_matches('/') != secondary.issuer.trim_end_matches('/') {
+        return primary;
+    }
+
+    primary.authorization_endpoint = primary
+        .authorization_endpoint
+        .or(secondary.authorization_endpoint);
+    primary.token_endpoint = primary.token_endpoint.or(secondary.token_endpoint);
+    primary.registration_endpoint = primary
+        .registration_endpoint
+        .or(secondary.registration_endpoint);
+    if primary.response_types_supported.is_empty() {
+        primary.response_types_supported = secondary.response_types_supported;
+    }
+    if primary.grant_types_supported.is_empty() {
+        primary.grant_types_supported = secondary.grant_types_supported;
+    }
+    if primary.code_challenge_methods_supported.is_empty() {
+        primary.code_challenge_methods_supported = secondary.code_challenge_methods_supported;
+    }
+    primary
 }
 
 #[cfg(test)]
