@@ -98,7 +98,6 @@ impl McpService {
 
     /// Makes this the root object: able to serve further data directories
     /// through `Open`.
-    #[must_use]
     pub(super) fn with_opener(
         mut self,
         connection: Connection,
