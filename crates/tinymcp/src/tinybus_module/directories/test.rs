@@ -381,3 +381,11 @@ async fn an_absolute_open_matches_a_relative_load_time_directory() {
     assert_eq!(path, OBJECT_PATH);
 }
 
+#[test]
+fn serving_failures_keep_the_bus_reason() {
+    let error = super::types::serving_error("path already served");
+    assert_eq!(
+        error.to_string(),
+        "bus failure: could not serve the directory: path already served"
+    );
+}

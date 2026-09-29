@@ -152,9 +152,7 @@ async fn serve_without_blocking_the_reply(
     let first_poll =
         std::future::poll_fn(|context| Poll::Ready(serve.as_mut().poll(context))).await;
     match first_poll {
-        Poll::Ready(outcome) => outcome.map_err(|error| Error::Bus {
-            detail: format!("could not serve the directory: {error}"),
-        }),
+        Poll::Ready(outcome) => outcome.map_err(serving_error),
         Poll::Pending => {
             tokio::spawn(async move {
                 if let Err(error) = serve.await {
@@ -163,5 +161,12 @@ async fn serve_without_blocking_the_reply(
             });
             Ok(())
         }
+    }
+}
+
+/// Converts a failed bus export into the crate's bus error.
+pub(super) fn serving_error(error: impl std::fmt::Display) -> Error {
+    Error::Bus {
+        detail: format!("could not serve the directory: {error}"),
     }
 }
