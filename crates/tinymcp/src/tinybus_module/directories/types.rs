@@ -55,10 +55,7 @@ impl DirectoryOpener {
     ) -> Result<Self> {
         let mut served = HashMap::new();
         if let Some(dir) = &config.data_dir {
-            let absolute = std::path::absolute(dir).map_err(|source| Error::StoreIo {
-                path: dir.clone(),
-                source: Box::new(source),
-            })?;
+            let absolute = super::super::service::absolute_data_dir(dir)?;
             served.insert(absolute, OBJECT_PATH.to_string());
         }
 

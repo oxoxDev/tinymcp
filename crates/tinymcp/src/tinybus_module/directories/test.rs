@@ -389,3 +389,9 @@ fn serving_failures_keep_the_bus_reason() {
         "bus failure: could not serve the directory: path already served"
     );
 }
+
+#[test]
+fn configured_directory_paths_are_normalized_to_absolute_paths() {
+    let path = super::super::service::absolute_data_dir(std::path::Path::new("relative")).unwrap();
+    assert!(path.is_absolute());
+}
