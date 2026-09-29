@@ -34,9 +34,9 @@
 //! **No behavior.** The transports, the store, the supervisor, and the OAuth
 //! flow live in `crates/tinymcp`, which depends on this crate and re-exports
 //! it. A payload type describes what a frame carries, not what the module does
-//! with it. The exceptions are pure functions over a payload that a host needs
-//! to apply identically — [`redact_endpoint`], [`render_tool_result`], and the
-//! [`sanitize`] pipeline — which have no state and no I/O.
+//! with it. The [`sanitize`] pipeline is the only shared policy, because both
+//! sides need identical bounds for untrusted text. Rendering and endpoint
+//! redaction live in the implementation crate.
 //!
 //! **No transport.** This crate holds no connection, client, or codec, and does
 //! not depend on `tinybus`, an async runtime, an HTTP client, or `rusqlite`. A
