@@ -13,6 +13,12 @@
 //! duplicated in the HTTP and stdio clients, which is exactly the drift a
 //! single definition exists to prevent.
 //!
+//! # The Streamable HTTP header names
+//!
+//! [`HEADER_PROTOCOL_VERSION`] and [`HEADER_SESSION_ID`] are the two headers
+//! both ends of a Streamable HTTP session must spell alike, so a host serving
+//! MCP names the same constants the client transport sends.
+//!
 //! # Untrusted text
 //!
 //! Several fields here — a tool's `description` and `title`, a server's
@@ -24,10 +30,10 @@
 mod types;
 
 pub use types::{
-    AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthChallenge,
-    McpAuthorizationContext, McpClientInfo, McpInitializeResult, McpRemoteTool,
-    McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
-    SUPPORTED_PROTOCOL_VERSIONS,
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
+    LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
+    McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
+    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
 };
 
 #[cfg(test)]

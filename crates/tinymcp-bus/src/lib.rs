@@ -149,9 +149,9 @@ pub use sanitize::{
     strip_instruction_fences, truncate_utf8_safe,
 };
 pub use transport::{
-    AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthChallenge,
-    McpAuthorizationContext, McpClientInfo, McpInitializeResult, McpRemoteTool,
-    McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
-    SUPPORTED_PROTOCOL_VERSIONS,
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
+    LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
+    McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
+    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
 };
 pub use version::{CONTRACT_VERSION, is_compatible};
