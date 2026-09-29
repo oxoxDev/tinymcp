@@ -6,6 +6,7 @@
 //!
 //! See `README.md` beside this file for the design and the wire guarantees.
 
+pub mod args;
 mod types;
 
 pub use types::{
