@@ -105,7 +105,9 @@ impl McpService {
         config: &ModuleConfig,
         supervisor: SupervisorConfig,
     ) -> Self {
-        self.opener = Some(Arc::new(DirectoryOpener::new(connection, config, supervisor)));
+        self.opener = Some(Arc::new(DirectoryOpener::new(
+            connection, config, supervisor,
+        )));
         self
     }
 

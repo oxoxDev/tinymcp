@@ -85,9 +85,8 @@ pub use config_servers::{
 };
 pub use error::{Error, Result};
 pub use registry::{
-    Connections, McpRegistry, OAuthFlow, ProbeOutcome,
-    REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, Supervisor, SupervisorConfig,
-    SupervisorEvent, TickReport,
+    Connections, McpRegistry, OAuthFlow, ProbeOutcome, REMOTE_REQUEST_TIMEOUT, SecretRef,
+    SecretVault, ServerRef, Store, Supervisor, SupervisorConfig, SupervisorEvent, TickReport,
 };
 #[cfg(feature = "module")]
 pub use tinybus_module::{McpService, ModuleConfig};
@@ -101,15 +100,15 @@ pub use transport::{redact_endpoint, render_tool_result};
 // types; nothing here redefines them.
 pub use tinymcp_bus;
 pub use tinymcp_bus::{
-    AuthDetection, AuthKind, AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind, ConnStatus,
-    ConnectedServerOverview, DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, ExtraFields, HttpHeader,
-    INTERFACE, InstalledServer, LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES, MAX_LIST_LIMIT,
-    MAX_TITLE_BYTES, METHODS, McpAuthChallenge, McpAuthConfig, McpAuthHint,
+    AuthDetection, AuthKind, AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind,
+    ConnStatus, ConnectedServerOverview, DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, ExtraFields,
+    HttpHeader, INTERFACE, InstalledServer, LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES,
+    MAX_LIST_LIMIT, MAX_TITLE_BYTES, METHODS, McpAuthChallenge, McpAuthConfig, McpAuthHint,
     McpAuthorizationContext, McpClientConfig, McpClientIdentityConfig, McpClientInfo,
     McpInitializeResult, McpProxyConfig, McpRegistryAuthConfig, McpRemoteTool, McpServerConfig,
     McpServerToolResult, McpSseEvent, McpTool, McpToolContent, McpToolResult, McpWriteListQuery,
     McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection,
     RegistryListResponse, RegistryPagination, RegistryServerDetail, RegistryServerSummary,
-    SUPPORTED_PROTOCOL_VERSIONS, SearchCuration, ServerDetail, ServerStatus, Transport, config, is_compatible, names, sanitize,
-    version,
+    SUPPORTED_PROTOCOL_VERSIONS, SearchCuration, ServerDetail, ServerStatus, Transport, config,
+    is_compatible, names, sanitize, version,
 };

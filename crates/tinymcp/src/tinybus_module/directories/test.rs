@@ -25,9 +25,11 @@ async fn serve_root(config: &ModuleConfig) -> Connection {
         .await
         .unwrap();
 
-    let service = McpService::new(config)
-        .unwrap()
-        .with_opener(connection.clone(), config, SupervisorConfig::default());
+    let service = McpService::new(config).unwrap().with_opener(
+        connection.clone(),
+        config,
+        SupervisorConfig::default(),
+    );
     connection
         .serve_at(OBJECT_PATH.try_into().unwrap(), service)
         .await
@@ -224,9 +226,14 @@ async fn a_relative_or_empty_path_is_refused_by_name() {
 async fn a_refusal_never_echoes_the_path() {
     let connection = serve_root(&ModuleConfig::default()).await;
 
-    let error = call::<String>(&connection, OBJECT_PATH, "Open", json!(["relative/secret-user"]))
-        .await
-        .unwrap_err();
+    let error = call::<String>(
+        &connection,
+        OBJECT_PATH,
+        "Open",
+        json!(["relative/secret-user"]),
+    )
+    .await
+    .unwrap_err();
 
     assert!(!error.to_string().contains("secret-user"), "{error}");
 }

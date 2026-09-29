@@ -63,6 +63,10 @@ fn every_served_member_is_reachable_by_its_contract_constant() {
         names::methods::CONNECT,
         names::methods::TOOL_CALL,
         names::methods::OAUTH_BEGIN,
+        names::methods::OAUTH_COMPLETE,
+        names::methods::CONNECTED_OVERVIEW,
+        names::methods::REGISTRY_SEARCH_CURATED,
+        names::methods::OPEN,
         names::methods::SETUP_INSTALL_AND_CONNECT,
         names::methods::STATIC_CALL_TOOL,
         names::methods::AUDIT_LIST_WRITES,
@@ -72,16 +76,17 @@ fn every_served_member_is_reachable_by_its_contract_constant() {
 }
 
 #[test]
-fn the_authorization_member_keeps_its_capitalisation() {
+fn the_authorization_members_keep_their_capitalisation() {
     // Derived from the method name it would be `OauthBegin`, which is not what
-    // the contract says. It carries an explicit name for that reason, and this
+    // the contract says. Each carries an explicit name for that reason, and this
     // is what notices if that annotation is dropped.
-    assert!(
-        service()
-            .members()
-            .iter()
-            .any(|member| member.as_str() == "OAuthBegin")
-    );
+    let members = service().members();
+    for name in ["OAuthBegin", "OAuthComplete"] {
+        assert!(
+            members.iter().any(|member| member.as_str() == name),
+            "{name} is not served"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1065,4 +1070,280 @@ async fn a_module_loaded_with_no_configuration_comes_up() {
     )
     .await
     .expect("the module comes up with nothing configured");
+}
+
+// ---------------------------------------------------------------------------
+// Members added for hosts that reach the module over the bus
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn the_connected_overview_is_empty_before_anything_connects() {
+    let directory = tempfile::tempdir().unwrap();
+    let service = service_at(directory.path(), "http://127.0.0.1:1");
+
+    let overview = ok(&service, names::methods::CONNECTED_OVERVIEW, json!([])).await;
+
+    assert_eq!(overview, json!([]));
+}
+
+#[tokio::test]
+async fn the_connected_overview_lists_a_connected_server_with_its_tools() {
+    let directory = tempfile::tempdir().unwrap();
+    let url = mock_mcp_server().await;
+    let service = service_at(directory.path(), "http://127.0.0.1:1");
+    service
+        .dynamic()
+        .store()
+        .insert_server(&remote_install("srv-1", &url))
+        .unwrap();
+    ok(&service, names::methods::CONNECT, json!(["srv-1"])).await;
+
+    let overview = ok(&service, names::methods::CONNECTED_OVERVIEW, json!([])).await;
+
+    assert_eq!(overview[0]["server_id"], json!("srv-1"));
+    assert_eq!(overview[0]["tools"][0]["name"], json!("forecast"));
+}
+
+#[tokio::test]
+async fn completing_a_sign_in_with_an_unknown_state_fails_by_name() {
+    // The state is what the redirect carried back; one the module never issued
+    // (or that expired) is refused rather than guessed at.
+    let directory = tempfile::tempdir().unwrap();
+    let service = service_at(directory.path(), "http://127.0.0.1:1");
+
+    let error = call(
+        &service,
+        names::methods::OAUTH_COMPLETE,
+        json!(["never-issued", "a-code"]),
+    )
+    .await
+    .expect_err("no such authorization");
+
+    assert_eq!(wire_name(&error), tinymcp_bus::errors::MALFORMED_RESPONSE);
+}
+
+#[tokio::test]
+async fn a_curated_search_with_no_switches_answers_as_the_plain_search_does() {
+    let directory = tempfile::tempdir().unwrap();
+    let (base, _hits) = catalog().await;
+    let service = service_at(directory.path(), &base);
+
+    let plain = ok(
+        &service,
+        names::methods::REGISTRY_SEARCH,
+        json!([null, 1, 20]),
+    )
+    .await;
+    let curated = ok(
+        &service,
+        names::methods::REGISTRY_SEARCH_CURATED,
+        json!([null, 1, 20, {}]),
+    )
+    .await;
+
+    assert_eq!(plain, curated);
+}
+
+#[tokio::test]
+async fn a_curated_search_tags_through_the_wire() {
+    let directory = tempfile::tempdir().unwrap();
+    let (base, _hits) = catalog().await;
+    let service = service_at(directory.path(), &base);
+
+    let page = ok(
+        &service,
+        names::methods::REGISTRY_SEARCH_CURATED,
+        json!([null, 1, 20, { "tag_official": true, "official_first": true }]),
+    )
+    .await;
+
+    // The fixture server is not on the canonical list, so the flag is cleared.
+    assert_eq!(page["servers"][0]["official"], json!(false));
+}
+
+#[tokio::test]
+async fn the_plain_search_still_takes_three_arguments() {
+    // Arity is part of the contract: `TinyBus` decodes positionally and a
+    // wrong-length array is refused, so widening `RegistrySearch` would break
+    // every host built against contract 1.0. Curation is a separate member.
+    let directory = tempfile::tempdir().unwrap();
+    let (base, _hits) = catalog().await;
+    let service = service_at(directory.path(), &base);
+
+    let error = call(
+        &service,
+        names::methods::REGISTRY_SEARCH,
+        json!([null, 1, 20, {}]),
+    )
+    .await
+    .expect_err("a fourth argument is not accepted");
+
+    assert!(error.to_string().contains("RegistrySearch"), "{error}");
+}
+
+// ---------------------------------------------------------------------------
+// Errors travel under their contract names
+// ---------------------------------------------------------------------------
+
+/// The name a failed call carries on the wire.
+fn wire_name(error: &tinybus::Error) -> &str {
+    error.wire_name()
+}
+
+#[tokio::test]
+async fn a_failure_carries_the_contract_name_for_its_error() {
+    let directory = tempfile::tempdir().unwrap();
+    let service = service_at(directory.path(), "http://127.0.0.1:1");
+
+    let unknown = call(&service, names::methods::CONNECT, json!(["nothing"]))
+        .await
+        .expect_err("no such install");
+    let blank = call(&service, names::methods::CONNECT, json!([""]))
+        .await
+        .expect_err("a blank identifier");
+    let not_connected = call(&service, names::methods::LIST_TOOLS, json!(["nothing"]))
+        .await
+        .expect_err("nothing is connected");
+
+    assert_eq!(wire_name(&unknown), tinymcp_bus::errors::UNKNOWN_SERVER);
+    assert_eq!(wire_name(&blank), tinymcp_bus::errors::UNKNOWN_SERVER);
+    assert_eq!(
+        wire_name(&not_connected),
+        tinymcp_bus::errors::NOT_CONNECTED
+    );
+}
+
+#[tokio::test]
+async fn a_failure_keeps_its_wording_beside_its_name() {
+    // The name is what a host matches; the message is what a person reads, and
+    // it still has to say something once re-reported as a string.
+    let directory = tempfile::tempdir().unwrap();
+    let service = service_at(directory.path(), "http://127.0.0.1:1");
+
+    let error = call(&service, names::methods::LIST_TOOLS, json!(["srv-9"]))
+        .await
+        .expect_err("nothing is connected");
+
+    assert!(error.wire_message().contains("srv-9"), "{error}");
+    assert!(error.wire_message().contains("not connected"), "{error}");
+}
+
+#[tokio::test]
+async fn a_static_server_failure_carries_its_name_too() {
+    let directory = tempfile::tempdir().unwrap();
+    let service = service_at(directory.path(), "http://127.0.0.1:1");
+
+    let error = call(&service, names::methods::STATIC_LIST_TOOLS, json!(["nope"]))
+        .await
+        .expect_err("never declared");
+
+    assert_eq!(wire_name(&error), tinymcp_bus::errors::UNKNOWN_SERVER);
+}
+
+// ---------------------------------------------------------------------------
+// Background work
+// ---------------------------------------------------------------------------
+
+/// Binds a loopback port and serves a working MCP server.
+async fn mock_mcp_server() -> String {
+    let app = Router::new().route(
+        "/",
+        axum::routing::post(|axum::Json(body): axum::Json<Value>| async move {
+            let method = body["method"].as_str().unwrap_or_default();
+            let result = if method == "initialize" {
+                json!({
+                    "protocolVersion": tinymcp_bus::LATEST_PROTOCOL_VERSION,
+                    "capabilities": {},
+                    "serverInfo": { "name": "working", "version": "1" },
+                })
+            } else {
+                json!({ "tools": [{ "name": "forecast" }] })
+            };
+            axum::Json(json!({ "jsonrpc": "2.0", "id": body["id"].clone(), "result": result }))
+        }),
+    );
+    format!("{}/", serve(app).await)
+}
+
+/// An enabled remote install pointing at `url`.
+fn remote_install(server_id: &str, url: &str) -> tinymcp_bus::InstalledServer {
+    tinymcp_bus::InstalledServer {
+        server_id: server_id.to_string(),
+        qualified_name: format!("@test/{server_id}"),
+        display_name: server_id.to_string(),
+        description: None,
+        icon_url: None,
+        command_kind: tinymcp_bus::CommandKind::Node,
+        command: "npx".into(),
+        args: Vec::new(),
+        env_keys: Vec::new(),
+        config: None,
+        installed_at: 1_000,
+        last_connected_at: None,
+        transport: tinymcp_bus::Transport::HttpRemote {
+            url: url.to_string(),
+        },
+        enabled: true,
+    }
+}
+
+#[tokio::test]
+async fn a_service_that_never_started_maintenance_reports_no_boot_pass() {
+    assert!(service().booted().await.is_none());
+}
+
+#[tokio::test]
+async fn starting_maintenance_connects_the_installed_servers() {
+    let directory = tempfile::tempdir().unwrap();
+    let url = mock_mcp_server().await;
+    let service = service_at(directory.path(), "http://127.0.0.1:1");
+    service
+        .dynamic()
+        .store()
+        .insert_server(&remote_install("srv-1", &url))
+        .unwrap();
+
+    let service = service
+        .with_maintenance(crate::registry::SupervisorConfig::default())
+        .await;
+    let outcome = service.booted().await.expect("maintenance was started");
+
+    assert_eq!(outcome.connected, 1);
+    assert!(service.dynamic().connections().is_connected("srv-1").await);
+}
+
+#[tokio::test]
+async fn a_module_comes_up_without_waiting_for_a_server_that_never_answers() {
+    // A listener that accepts and says nothing: connecting to it would take the
+    // whole request budget. `setup` must not wait on that.
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/", listener.local_addr().unwrap());
+    let _held = tokio::spawn(async move {
+        let mut sockets = Vec::new();
+        while let Ok((socket, _)) = listener.accept().await {
+            sockets.push(socket);
+        }
+    });
+
+    let directory = tempfile::tempdir().unwrap();
+    let store = crate::Store::open(directory.path()).unwrap();
+    store
+        .insert_server(&remote_install("srv-slow", &url))
+        .unwrap();
+    drop(store);
+
+    // The guard only bounds a failure; a passing run returns at once.
+    tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        super::setup(
+            in_process_connection().await,
+            ModuleConfig {
+                data_dir: Some(directory.path().to_path_buf()),
+                client: McpClientConfig::default(),
+            },
+        ),
+    )
+    .await
+    .expect("setup did not wait for the connect pass")
+    .expect("the module comes up");
 }

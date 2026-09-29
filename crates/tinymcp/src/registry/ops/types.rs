@@ -12,10 +12,10 @@ use crate::registry::{
     SupervisorConfig, curation,
 };
 use tinymcp_bus::{
-    AuthDetection, ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome, InstalledServer,
-    McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool, RegistrySearchPage,
-    RegistryServerDetail, RegistrySettings, SearchCuration, ToolCallOutcome, Transport,
-    UpdateEnvOutcome, UpdateEnvStatus,
+    AuthDetection, ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome,
+    InstalledServer, McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool,
+    RegistrySearchPage, RegistryServerDetail, RegistrySettings, SearchCuration, ToolCallOutcome,
+    Transport, UpdateEnvOutcome, UpdateEnvStatus,
 };
 
 /// The separator a source-routed name uses.

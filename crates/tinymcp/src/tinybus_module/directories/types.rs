@@ -145,7 +145,8 @@ async fn serve_without_blocking_the_reply(
         async move { connection.serve_at(path, service).await }
     });
 
-    let first_poll = std::future::poll_fn(|context| Poll::Ready(serve.as_mut().poll(context))).await;
+    let first_poll =
+        std::future::poll_fn(|context| Poll::Ready(serve.as_mut().poll(context))).await;
     match first_poll {
         Poll::Ready(outcome) => outcome.map_err(|error| Error::Bus {
             detail: format!("could not serve the directory: {error}"),
