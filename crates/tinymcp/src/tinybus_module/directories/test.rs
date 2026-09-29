@@ -25,12 +25,10 @@ async fn serve_root(config: &ModuleConfig) -> Connection {
         .await
         .unwrap();
 
-    let service = McpService::new(config).unwrap().with_opener(
-        connection.clone(),
-        config,
-        SupervisorConfig::default(),
-    )
-    .unwrap();
+    let service = McpService::new(config)
+        .unwrap()
+        .with_opener(connection.clone(), config, SupervisorConfig::default())
+        .unwrap();
     connection
         .serve_at(OBJECT_PATH.try_into().unwrap(), service)
         .await
