@@ -588,6 +588,10 @@ struct Authority {
     without_authorization_code: std::sync::atomic::AtomicBool,
     /// Refuse the code exchange.
     refuse_exchange: std::sync::atomic::AtomicBool,
+    /// Also publish an `OpenID` document, without a registration endpoint.
+    oidc_without_registration: std::sync::atomic::AtomicBool,
+    /// Also publish an `OpenID` document, with a registration endpoint.
+    oidc_with_registration: std::sync::atomic::AtomicBool,
 }
 
 /// The registration and token endpoints, split out to keep the router builder
@@ -656,10 +660,38 @@ async fn authority() -> (String, Arc<Authority>) {
                 }
             }),
         )
-        // Absent on purpose: the client tries this first and must fall back.
+        // Absent unless a test asks for it: most authorities publish only the
+        // RFC 8414 document.
         .route(
             "/.well-known/openid-configuration",
-            get(|| async { AxumStatus::NOT_FOUND }),
+            get({
+                let origin = Arc::clone(&origin);
+                let state = Arc::clone(&state);
+                move || {
+                    let origin = origin.lock().clone();
+                    let state = Arc::clone(&state);
+                    async move {
+                        let with_registration = state.oidc_with_registration.load(Ordering::SeqCst);
+                        if !with_registration
+                            && !state.oidc_without_registration.load(Ordering::SeqCst)
+                        {
+                            return AxumStatus::NOT_FOUND.into_response();
+                        }
+                        // Shaped like Granola's: the OpenID document lists
+                        // grants the OAuth one does not, and no registration.
+                        let mut metadata = json!({
+                            "issuer": origin,
+                            "authorization_endpoint": format!("{origin}/authorize"),
+                            "token_endpoint": format!("{origin}/token"),
+                            "grant_types_supported": ["authorization_code", "client_credentials"],
+                        });
+                        if with_registration {
+                            metadata["registration_endpoint"] = json!(format!("{origin}/register"));
+                        }
+                        axum::Json(metadata).into_response()
+                    }
+                }
+            }),
         )
         .route(
             "/.well-known/oauth-authorization-server",
@@ -841,10 +873,10 @@ async fn beginning_parks_exactly_one_pending_authorization() {
 }
 
 #[tokio::test]
-async fn discovery_falls_back_from_the_openid_document_to_the_oauth_one() {
+async fn discovery_reads_the_oauth_document_when_there_is_no_openid_one() {
     // Servers publish one or the other and rarely say which. The loopback
     // authority answers 404 on the OpenID document, so reaching an authorize
-    // URL at all proves the fallback ran.
+    // URL at all proves the OAuth document was read.
     let (endpoint, _state) = authority_with_challenge().await;
     let store = store_with_remote(&endpoint);
 
@@ -854,6 +886,41 @@ async fn discovery_falls_back_from_the_openid_document_to_the_oauth_one() {
             .await
             .is_ok()
     );
+}
+
+#[tokio::test]
+async fn an_openid_document_without_registration_does_not_hide_the_oauth_one() {
+    // Granola (mcp-auth.granola.ai) publishes both documents, and only the
+    // OAuth one names a registration endpoint. Reading the OpenID document
+    // first and stopping there refused the only usable authority.
+    let (endpoint, state) = authority_with_challenge().await;
+    state
+        .oidc_without_registration
+        .store(true, Ordering::SeqCst);
+    let store = store_with_remote(&endpoint);
+
+    let url = flow()
+        .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .await
+        .expect("begin");
+
+    assert_eq!(state.registrations.load(Ordering::SeqCst), 1);
+    assert!(url.contains("/authorize"), "{url}");
+}
+
+#[tokio::test]
+async fn an_oauth_document_missing_registration_is_completed_from_the_openid_one() {
+    let (endpoint, state) = authority_with_challenge().await;
+    state.without_registration.store(true, Ordering::SeqCst);
+    state.oidc_with_registration.store(true, Ordering::SeqCst);
+    let store = store_with_remote(&endpoint);
+
+    flow()
+        .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .await
+        .expect("begin");
+
+    assert_eq!(state.registrations.load(Ordering::SeqCst), 1);
 }
 
 // ---------------------------------------------------------------------------

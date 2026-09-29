@@ -819,11 +819,16 @@ impl McpHttpClient {
         let oauth_url = format!("{trimmed}/.well-known/oauth-authorization-server");
         let oidc_url = format!("{trimmed}/.well-known/openid-configuration");
 
-        let oauth = self.fetch_json::<AuthorizationServerMetadata>(&oauth_url).await;
+        let oauth = self
+            .fetch_json::<AuthorizationServerMetadata>(&oauth_url)
+            .await;
         match oauth {
             Ok(metadata) if has_every_endpoint(&metadata) => Ok(metadata),
             Ok(metadata) => {
-                match self.fetch_json::<AuthorizationServerMetadata>(&oidc_url).await {
+                match self
+                    .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
+                    .await
+                {
                     Ok(oidc) => Ok(fill_missing_metadata(metadata, oidc)),
                     Err(error) => {
                         tracing::debug!(
@@ -958,7 +963,6 @@ struct ResponseEnvelope {
     result: Value,
     session_id: Option<String>,
 }
-
 
 /// Whether metadata names every endpoint the browser sign-in flow needs.
 fn has_every_endpoint(metadata: &AuthorizationServerMetadata) -> bool {
