@@ -361,3 +361,22 @@ async fn opening_a_directory_propagates_store_creation_errors() {
         crate::Error::StoreIo { .. } | crate::Error::Store { .. }
     ));
 }
+
+#[tokio::test]
+async fn an_absolute_open_matches_a_relative_load_time_directory() {
+    let relative_root = tempfile::tempdir_in("target").unwrap();
+    let absolute = relative_root.path().canonicalize().unwrap();
+    let relative = absolute
+        .strip_prefix(std::env::current_dir().unwrap())
+        .unwrap();
+    let connection = serve_root(&config_in(relative)).await;
+    let path: String = call(
+        &connection,
+        OBJECT_PATH,
+        "Open",
+        json!([absolute.to_str().unwrap()]),
+    )
+    .await
+    .unwrap();
+    assert_eq!(path, OBJECT_PATH);
+}
