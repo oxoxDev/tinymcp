@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::Value;
-use tinymcp_bus::McpTool;
+use tinymcp_bus::{McpTool, normalize_tool_arguments};
 use tinymcp_bus::sanitize::sanitize_for_llm;
 use tinytools::{PermissionLevel, Tool, ToolCategory, ToolExposure, ToolResult};
 
@@ -142,6 +142,19 @@ impl Tool for McpServerTool {
     }
 
     async fn execute(&self, arguments: Value) -> anyhow::Result<ToolResult> {
+        // MCP requires an object. Some providers JSON-encode it, or send
+        // nothing; read it the way every other call path does, and answer a
+        // value that is not an object without calling the server.
+        let arguments = match normalize_tool_arguments(Some(arguments)) {
+            Ok(object) => Value::Object(object),
+            Err(error) => {
+                tracing::debug!(tool = %self.name, "refused MCP tool arguments: {error}");
+                return Ok(ToolResult::error(format!(
+                    "invalid arguments for MCP tool `{}`: {error}",
+                    self.remote_name
+                )));
+            }
+        };
         tracing::debug!(
             tool = %self.name,
             server_id = %self.server_id,
