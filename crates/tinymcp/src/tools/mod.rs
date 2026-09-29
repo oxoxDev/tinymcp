@@ -73,7 +73,8 @@ pub fn tools_for(
             }
             let mut name = naming::tool_name(&source.label, &tool.name);
             if taken.contains(&name) {
-                name = naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);
+                name =
+                    naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);
             }
             if !taken.insert(name.clone()) {
                 tracing::debug!(
@@ -86,7 +87,11 @@ pub fn tools_for(
             built.push(McpServerTool::new(name, source, tool, Arc::clone(invoker)));
         }
     }
-    tracing::debug!(sources = sources.len(), tools = built.len(), "built MCP tools");
+    tracing::debug!(
+        sources = sources.len(),
+        tools = built.len(),
+        "built MCP tools"
+    );
     built
 }
 

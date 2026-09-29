@@ -31,18 +31,12 @@ pub trait McpToolInvoker: Send + Sync + std::fmt::Debug {
     ///
     /// Whatever reaching the server returns: not connected, not allowed, a
     /// transport failure.
-    async fn invoke(&self, server_id: &str, tool: &str, arguments: Value)
-    -> Result<McpToolResult>;
+    async fn invoke(&self, server_id: &str, tool: &str, arguments: Value) -> Result<McpToolResult>;
 }
 
 #[async_trait]
 impl McpToolInvoker for McpRegistry {
-    async fn invoke(
-        &self,
-        server_id: &str,
-        tool: &str,
-        arguments: Value,
-    ) -> Result<McpToolResult> {
+    async fn invoke(&self, server_id: &str, tool: &str, arguments: Value) -> Result<McpToolResult> {
         self.connections()
             .call_tool(server_id, tool, arguments)
             .await
@@ -52,12 +46,7 @@ impl McpToolInvoker for McpRegistry {
 
 #[async_trait]
 impl McpToolInvoker for McpServerRegistry {
-    async fn invoke(
-        &self,
-        server_id: &str,
-        tool: &str,
-        arguments: Value,
-    ) -> Result<McpToolResult> {
+    async fn invoke(&self, server_id: &str, tool: &str, arguments: Value) -> Result<McpToolResult> {
         self.call_tool(server_id, tool, arguments)
             .await
             .map(|result| result.rendered)

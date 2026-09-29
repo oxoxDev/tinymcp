@@ -38,11 +38,18 @@ const NOISE_WORDS: &[&str] = &["mcp", "server"];
 /// `readGoals`, `read-goals` and `Read Goals` all become `read_goals`.
 #[must_use]
 pub fn slug(input: &str) -> String {
+    slug_with(input, true)
+}
+
+/// [`slug`], optionally without the camel-case split. Server names are brand
+/// names — `GitHub`, `TickTick` — and read worse split.
+fn slug_with(input: &str, split_camel: bool) -> String {
     let mut out = String::with_capacity(input.len());
     let mut previous: Option<char> = None;
     for ch in input.chars() {
         if ch.is_ascii_alphanumeric() {
-            let boundary = ch.is_ascii_uppercase()
+            let boundary = split_camel
+                && ch.is_ascii_uppercase()
                 && previous.is_some_and(|p| p.is_ascii_lowercase() || p.is_ascii_digit());
             if boundary && !out.ends_with('_') {
                 out.push('_');
@@ -67,14 +74,18 @@ pub fn slug(input: &str) -> String {
 #[must_use]
 pub fn server_slug(label: &str) -> String {
     let segment = label.rsplit('/').next().unwrap_or(label);
-    let base = slug(segment.trim_start_matches('@'));
+    let base = slug_with(segment.trim_start_matches('@'), false);
     let words: Vec<&str> = base.split('_').filter(|word| !word.is_empty()).collect();
     let meaningful: Vec<&str> = words
         .iter()
         .copied()
         .filter(|word| !NOISE_WORDS.contains(word))
         .collect();
-    let chosen = if meaningful.is_empty() { words } else { meaningful };
+    let chosen = if meaningful.is_empty() {
+        words
+    } else {
+        meaningful
+    };
     let joined = truncate(&chosen.join("_"), MAX_SERVER_SLUG_LEN);
     if joined.is_empty() {
         "server".to_string()

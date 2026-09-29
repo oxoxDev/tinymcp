@@ -168,8 +168,15 @@ fn unreachable() -> Arc<dyn McpToolInvoker> {
 #[test]
 fn names_read_as_server_then_tool() {
     assert_eq!(tool_name("ticktic", "read_goals"), "mcp_ticktic_read_goals");
-    assert_eq!(tool_name("@acme/ticktick-mcp", "readGoals"), "mcp_ticktick_read_goals");
-    assert_eq!(tool_name("GitHub MCP Server", "create-issue"), "mcp_github_create_issue");
+    assert_eq!(
+        tool_name("@acme/ticktick-mcp", "readGoals"),
+        "mcp_ticktick_read_goals"
+    );
+    assert_eq!(
+        tool_name("GitHub MCP Server", "create-issue"),
+        "mcp_github_create_issue"
+    );
+    assert_eq!(tool_name("TickTick", "x"), "mcp_ticktick_x");
     assert_eq!(tool_name("mcp", "x"), "mcp_mcp_x");
     assert_eq!(tool_name("", "."), "mcp_server_tool");
 }
@@ -193,7 +200,11 @@ fn long_names_are_cut_to_the_limit_and_stay_distinct() {
     assert!(first.len() <= MAX_TOOL_NAME_LEN, "{first}");
     assert!(first.starts_with("mcp_server_aaaa"));
     assert_ne!(first, second);
-    assert_eq!(first, tool_name("server", &long_tool), "stable across calls");
+    assert_eq!(
+        first,
+        tool_name("server", &long_tool),
+        "stable across calls"
+    );
 }
 
 #[test]
@@ -241,7 +252,11 @@ fn colliding_names_are_disambiguated_deterministically() {
     let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
     assert_eq!(names.len(), 2, "the blank name is skipped");
     assert_eq!(names[0], "mcp_weather_forecast");
-    assert!(names[1].starts_with("mcp_weather_forecast_"), "{}", names[1]);
+    assert!(
+        names[1].starts_with("mcp_weather_forecast_"),
+        "{}",
+        names[1]
+    );
     assert_eq!(tools[0].server_id(), "a");
 
     let again = tools_for(&sources, &unreachable());
@@ -256,8 +271,15 @@ fn exposure_defaults_to_deferred_with_direct_opt_ins() {
     assert_eq!(tools[0].exposure(), ToolExposure::Deferred);
     assert_eq!(tools[1].exposure(), ToolExposure::Direct);
 
-    let direct = tools_for(&[source.with_exposure(McpExposure::direct())], &unreachable());
-    assert!(direct.iter().all(|tool| tool.exposure() == ToolExposure::Direct));
+    let direct = tools_for(
+        &[source.with_exposure(McpExposure::direct())],
+        &unreachable(),
+    );
+    assert!(
+        direct
+            .iter()
+            .all(|tool| tool.exposure() == ToolExposure::Direct)
+    );
 }
 
 #[test]
@@ -308,7 +330,10 @@ async fn an_installed_server_is_callable_by_name_and_cached_for_the_next_boot() 
     // First process: install and connect, which caches the listing.
     {
         let registry = dynamic_registry(Store::open(directory.path()).unwrap());
-        registry.store().insert_server(&installed("s1", &url)).unwrap();
+        registry
+            .store()
+            .insert_server(&installed("s1", &url))
+            .unwrap();
         registry.connect("s1").await.unwrap();
 
         let registry: Arc<McpRegistry> = Arc::new(registry);
@@ -324,7 +349,10 @@ async fn an_installed_server_is_callable_by_name_and_cached_for_the_next_boot() 
         let names: Vec<&str> = tools.iter().map(|tool| tool.name()).collect();
         assert_eq!(names, ["mcp_ticktick_failing", "mcp_ticktick_read_goals"]);
 
-        let read = tools.iter().find(|t| t.remote_name() == "readGoals").unwrap();
+        let read = tools
+            .iter()
+            .find(|t| t.remote_name() == "readGoals")
+            .unwrap();
         let result = read.execute(json!({ "list": "work" })).await.unwrap();
         assert!(!result.is_error);
         assert_eq!(result.text(), "ship it");
@@ -350,17 +378,28 @@ async fn an_installed_server_is_callable_by_name_and_cached_for_the_next_boot() 
     let result = tools[1].execute(json!({ "list": "work" })).await.unwrap();
     assert!(result.is_error, "a cached tool is not a live connection");
     assert!(result.text().contains("not connected") || result.text().contains("failed"));
-    assert_eq!(calls.count.load(Ordering::SeqCst), before, "nothing was sent");
+    assert_eq!(
+        calls.count.load(Ordering::SeqCst),
+        before,
+        "nothing was sent"
+    );
 }
 
 #[tokio::test]
 async fn disabling_or_uninstalling_stops_cached_tools_appearing() {
     let (url, _calls) = mcp_server().await;
     let registry = dynamic_registry(Store::open_in_memory().unwrap());
-    registry.store().insert_server(&installed("s1", &url)).unwrap();
+    registry
+        .store()
+        .insert_server(&installed("s1", &url))
+        .unwrap();
     registry.connect("s1").await.unwrap();
     registry.disconnect("s1").await.unwrap();
-    assert_eq!(registry.cached_overview().await.unwrap().len(), 1, "disconnect keeps the cache");
+    assert_eq!(
+        registry.cached_overview().await.unwrap().len(),
+        1,
+        "disconnect keeps the cache"
+    );
 
     registry.set_enabled("s1", false).await.unwrap();
     assert!(registry.cached_overview().await.unwrap().is_empty());
@@ -382,7 +421,13 @@ async fn a_changed_definition_does_not_read_the_old_servers_tools() {
 
     let moved = installed("s1", "http://127.0.0.1:9/elsewhere");
     let fingerprint = crate::registry::store::installed_fingerprint(&moved);
-    assert!(registry.store().cached_tools("s1", &fingerprint).unwrap().is_none());
+    assert!(
+        registry
+            .store()
+            .cached_tools("s1", &fingerprint)
+            .unwrap()
+            .is_none()
+    );
 }
 
 #[tokio::test]
@@ -407,7 +452,10 @@ async fn a_configured_server_caches_its_listing_and_is_callable() {
     let fresh = Arc::new(fresh);
     let invoker: Arc<dyn McpToolInvoker> = fresh.clone();
     let tools = tools_for(&[source], &invoker);
-    let read: &McpServerTool = tools.iter().find(|t| t.remote_name() == "readGoals").unwrap();
+    let read: &McpServerTool = tools
+        .iter()
+        .find(|t| t.remote_name() == "readGoals")
+        .unwrap();
     assert_eq!(read.name(), "mcp_ticktick_read_goals");
     assert_eq!(read.exposure(), ToolExposure::Direct);
 
