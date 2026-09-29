@@ -28,4 +28,6 @@ pub use ops::McpRegistry;
 pub use setup::{SecretRef, SecretVault};
 pub use sources::{Registries, RegistrySource};
 pub use store::Store;
-pub use supervisor::{ServerRef, Supervisor, SupervisorConfig, SupervisorEvent, TickReport};
+pub use supervisor::{
+    ServerRef, SupervisedHost, Supervisor, SupervisorConfig, SupervisorEvent, TickReport,
+};

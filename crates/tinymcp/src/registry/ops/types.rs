@@ -621,6 +621,12 @@ impl McpRegistry {
     }
 }
 
+impl AsRef<McpRegistry> for McpRegistry {
+    fn as_ref(&self) -> &McpRegistry {
+        self
+    }
+}
+
 impl McpRegistry {
     // -- the guided setup flow ---------------------------------------------
 

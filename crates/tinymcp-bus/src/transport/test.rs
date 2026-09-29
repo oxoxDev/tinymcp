@@ -11,7 +11,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::{
-    AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthChallenge,
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, LATEST_PROTOCOL_VERSION, McpAuthChallenge,
     McpAuthorizationContext, McpClientInfo, McpInitializeResult, McpRemoteTool,
     McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
     SUPPORTED_PROTOCOL_VERSIONS,
@@ -473,4 +473,13 @@ fn an_sse_event_round_trips_with_json_data() {
         serde_json::from_value::<McpSseEvent>(encoded).unwrap(),
         event
     );
+}
+
+#[test]
+fn the_streamable_http_header_names_are_pinned() {
+    // Header names are wire contract: a server and a client that spell one
+    // differently never see each other's session.
+    assert_eq!(HEADER_PROTOCOL_VERSION, "MCP-Protocol-Version");
+    assert_eq!(HEADER_SESSION_ID, "Mcp-Session-Id");
+    assert_eq!(crate::HEADER_SESSION_ID, HEADER_SESSION_ID);
 }
