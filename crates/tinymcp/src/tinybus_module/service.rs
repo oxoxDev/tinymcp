@@ -575,7 +575,7 @@ impl McpService {
 
 /// Resolves a configured data directory to the absolute spelling used by Open.
 pub(super) fn absolute_data_dir(path: &std::path::Path) -> Result<std::path::PathBuf> {
-    std::path::absolute(path).map_err(|source| Error::StoreIo {
+    std::path::absolute(path).map_err(|source| crate::error::Error::StoreIo {
         path: path.to_path_buf(),
         source: Box::new(source),
     })
