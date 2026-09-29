@@ -386,7 +386,7 @@ async fn serving_fails_when_the_bus_connection_is_closed() {
     let connection = serve_root(&ModuleConfig::default()).await;
     connection.close().await.unwrap();
     let service = McpService::new(&ModuleConfig::default()).unwrap();
-    let path = "ai/tinyhumans/tinymcp/closed".try_into().unwrap();
+    let path = "/ai/tinyhumans/tinymcp/closed".try_into().unwrap();
     let error = super::types::serve_without_blocking_the_reply(&connection, path, service)
         .await
         .unwrap_err();
