@@ -733,6 +733,39 @@ async fn discovery_follows_the_challenge_to_both_metadata_documents() {
 }
 
 #[tokio::test]
+async fn complete_rfc8414_metadata_is_returned_without_oidc_discovery() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let issuer = format!("http://{}", listener.local_addr().unwrap());
+    let metadata_issuer = issuer.clone();
+    let app = Router::new().route(
+        "/.well-known/oauth-authorization-server",
+        get(move || {
+            let issuer = metadata_issuer.clone();
+            async move {
+                Json(json!({
+                    "issuer": issuer,
+                    "authorization_endpoint": format!("{issuer}/authorize"),
+                    "token_endpoint": format!("{issuer}/token"),
+                    "registration_endpoint": format!("{issuer}/register"),
+                }))
+            }
+        }),
+    );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let client = McpHttpClient::new(format!("{issuer}/"), 2).unwrap();
+
+    let metadata = client
+        .fetch_authorization_server_metadata(&issuer)
+        .await
+        .unwrap();
+
+    assert_eq!(metadata.issuer, issuer);
+    assert!(metadata.registration_endpoint.is_some());
+}
+
+#[tokio::test]
 async fn a_401_advertising_resource_metadata_is_flagged_as_oauth() {
     // This is what separates "sign in" from "paste a token" for a caller.
     let endpoint = spawn_discovery_server().await;
