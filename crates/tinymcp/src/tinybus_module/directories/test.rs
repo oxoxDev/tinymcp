@@ -364,7 +364,7 @@ async fn opening_a_directory_propagates_store_creation_errors() {
 
 #[tokio::test]
 async fn an_absolute_open_matches_a_relative_load_time_directory() {
-    let relative_root = tempfile::tempdir_in("target").unwrap();
+    let relative_root = tempfile::tempdir_in(".").unwrap();
     let absolute = relative_root.path().canonicalize().unwrap();
     let relative = absolute
         .strip_prefix(std::env::current_dir().unwrap())
