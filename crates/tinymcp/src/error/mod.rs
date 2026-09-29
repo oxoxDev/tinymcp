@@ -379,9 +379,7 @@ impl Error {
             Self::Unauthorized { .. } => errors::UNAUTHORIZED,
             Self::MissingRuntime { .. } => errors::MISSING_RUNTIME,
             Self::Http { .. } => errors::HTTP,
-            Self::Transport { .. } | Self::ServerIo { .. } | Self::ServerBind { .. } => {
-                errors::TRANSPORT
-            }
+            Self::Transport { .. } => errors::TRANSPORT,
             Self::UnsupportedProtocolVersion { .. } => errors::UNSUPPORTED_PROTOCOL_VERSION,
             Self::MalformedResponse { .. } => errors::MALFORMED_RESPONSE,
             Self::Rpc { .. } => errors::RPC,
