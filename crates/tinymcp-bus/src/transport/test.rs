@@ -17,7 +17,7 @@ use super::{
     AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
     LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
     McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
-    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS
+    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
 };
 use crate::{MAX_DESCRIPTION_BYTES, MAX_TITLE_BYTES, McpClientIdentityConfig};
 use serde_json::json;

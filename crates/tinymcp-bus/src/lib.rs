@@ -159,6 +159,6 @@ pub use transport::{
     AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
     LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
     McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
-    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS
+    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
 };
 pub use version::{CONTRACT_VERSION, is_compatible};
