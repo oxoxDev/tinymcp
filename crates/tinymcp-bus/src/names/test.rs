@@ -8,7 +8,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use super::{INTERFACE, METHODS, OBJECT_PATH, methods};
+use super::{DIRECTORY_OBJECT_PREFIX, INTERFACE, METHODS, OBJECT_PATH, methods};
 
 #[test]
 fn the_object_path_is_the_interface_in_path_form() {
@@ -65,6 +65,7 @@ fn the_method_table_holds_every_declared_member() {
         METHODS,
         [
             methods::REGISTRY_SEARCH,
+            methods::REGISTRY_SEARCH_CURATED,
             methods::REGISTRY_GET,
             methods::REGISTRY_SETTINGS_GET,
             methods::REGISTRY_SETTINGS_SET,
@@ -76,8 +77,10 @@ fn the_method_table_holds_every_declared_member() {
             methods::CONNECT,
             methods::DISCONNECT,
             methods::STATUS,
+            methods::CONNECTED_OVERVIEW,
             methods::DETECT_AUTH,
             methods::OAUTH_BEGIN,
+            methods::OAUTH_COMPLETE,
             methods::LIST_TOOLS,
             methods::TOOL_CALL,
             methods::CONFIG_ASSIST,
@@ -92,6 +95,7 @@ fn the_method_table_holds_every_declared_member() {
             methods::STATIC_CALL_TOOL,
             methods::AUDIT_RECORD_WRITE,
             methods::AUDIT_LIST_WRITES,
+            methods::OPEN,
         ]
     );
 }
@@ -138,4 +142,22 @@ fn the_audit_members_are_named_as_a_family() {
             "{method} is not an Audit member"
         );
     }
+}
+
+#[test]
+fn the_members_added_for_hosts_dropping_the_path_dependency_are_pinned() {
+    // Each is a string a host binds to, so a rename is a breaking change.
+    assert_eq!(methods::OAUTH_COMPLETE, "OAuthComplete");
+    assert_eq!(methods::CONNECTED_OVERVIEW, "ConnectedOverview");
+    assert_eq!(methods::REGISTRY_SEARCH_CURATED, "RegistrySearchCurated");
+    assert_eq!(methods::OPEN, "Open");
+}
+
+#[test]
+fn per_directory_objects_never_share_the_root_objects_path() {
+    // A per-directory path is `{prefix}/d<N>`, so the prefix must not be a
+    // prefix of the root path or the reverse.
+    assert!(!OBJECT_PATH.starts_with(DIRECTORY_OBJECT_PREFIX));
+    assert!(!DIRECTORY_OBJECT_PREFIX.starts_with(OBJECT_PATH));
+    assert!(DIRECTORY_OBJECT_PREFIX.starts_with("/ai/tinyhumans/tinymcp/"));
 }
