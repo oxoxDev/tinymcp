@@ -34,15 +34,12 @@ pub fn render(servers: &[InstalledServer], stored_keys: &BTreeMap<String, Vec<St
     let mut out = Map::new();
     for server in entries {
         let mut entry = Map::new();
-        match &server.transport {
-            Transport::HttpRemote { url } => {
-                entry.insert("url".into(), json!(url));
-            }
-            _ => {
-                entry.insert("command".into(), json!(server.command));
-                if !server.args.is_empty() {
-                    entry.insert("args".into(), json!(server.args));
-                }
+        if let Transport::HttpRemote { url } = &server.transport {
+            entry.insert("url".into(), json!(url));
+        } else {
+            entry.insert("command".into(), json!(server.command));
+            if !server.args.is_empty() {
+                entry.insert("args".into(), json!(server.args));
             }
         }
         if let Some(description) = server.description.as_deref().filter(|d| !d.is_empty()) {

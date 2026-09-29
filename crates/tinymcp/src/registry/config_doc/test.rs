@@ -361,7 +361,10 @@ async fn applying_to_an_empty_store_installs_every_declared_server() {
         "t"
     );
     // Only an enabled server is connected; a disabled one is only recorded.
-    assert_eq!(report.connect_queued, [local.server_id.clone()]);
+    assert_eq!(
+        report.connect_queued,
+        std::slice::from_ref(&local.server_id)
+    );
     let installed_ids: Vec<&str> = report
         .installed
         .iter()
