@@ -623,3 +623,67 @@ fn oversized_text_json_and_markdown_results_are_elided() {
             .ends_with("bytes elided]")
     );
 }
+
+// ---------------------------------------------------------------------------
+// Argument normalization
+// ---------------------------------------------------------------------------
+
+/// An invoker that records the arguments it is handed.
+#[derive(Debug, Default)]
+struct Recording {
+    seen: parking_lot::Mutex<Vec<Value>>,
+}
+
+#[async_trait::async_trait]
+impl McpToolInvoker for Recording {
+    async fn invoke(&self, _: &str, _: &str, arguments: Value) -> crate::Result<McpToolResult> {
+        self.seen.lock().push(arguments);
+        Ok(McpToolResult {
+            content: vec![McpToolContent::Text { text: "ok".into() }],
+            is_error: false,
+            markdown_formatted: None,
+        })
+    }
+}
+
+fn recorded_tool(recording: &Arc<Recording>) -> McpServerTool {
+    let invoker: Arc<dyn McpToolInvoker> = recording.clone();
+    let sources = [McpToolSource::from_overview(&overview(
+        "s1",
+        "@acme/ticktick",
+        &["list_projects"],
+    ))];
+    tools_for(&sources, &invoker).remove(0)
+}
+
+#[tokio::test]
+async fn string_encoded_arguments_reach_the_server_as_an_object() {
+    // Some providers JSON-encode the arguments object; the server must still
+    // receive an object, not the string `"{}"`.
+    let recording = Arc::new(Recording::default());
+    let tool = recorded_tool(&recording);
+
+    for sent in [json!("{}"), json!("{\"list\":\"work\"}"), Value::Null] {
+        let result = tool.execute(sent).await.unwrap();
+        assert!(!result.is_error, "a normalizable call must go through");
+    }
+
+    assert_eq!(
+        *recording.seen.lock(),
+        vec![json!({}), json!({ "list": "work" }), json!({})]
+    );
+}
+
+#[tokio::test]
+async fn arguments_that_are_not_an_object_are_refused_before_the_call() {
+    let recording = Arc::new(Recording::default());
+    let tool = recorded_tool(&recording);
+
+    let result = tool.execute(json!([1, 2])).await.unwrap();
+
+    assert!(result.is_error);
+    assert!(
+        recording.seen.lock().is_empty(),
+        "the server must not be called"
+    );
+}

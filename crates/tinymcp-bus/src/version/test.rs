@@ -4,7 +4,13 @@ use super::{CONTRACT_VERSION, binds, is_compatible};
 
 #[test]
 fn the_shipped_contract_version_is_pinned() {
-    assert_eq!(CONTRACT_VERSION, (1, 0));
+    assert_eq!(CONTRACT_VERSION, (1, 1));
+}
+
+#[test]
+fn a_host_on_this_contract_refuses_a_module_from_before_it() {
+    // 1.1 added the agent-tools family; a 1.0 module does not carry it.
+    assert!(!is_compatible((1, 0)));
 }
 
 #[test]

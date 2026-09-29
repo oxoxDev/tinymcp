@@ -22,6 +22,8 @@
 //!   records.
 //! - [`audit`] — the durable record of every write an MCP tool performed.
 //! - [`sanitize`] — the stripping pipeline applied to untrusted remote text.
+//! - [`agent_tools`] — the tool specs a host exposes to a model, and the
+//!   normalization every forwarded call's `arguments` goes through.
 //! - [`version`] — [`CONTRACT_VERSION`] and the [`is_compatible`] bind rule.
 //!
 //! # What is deliberately not here
@@ -109,6 +111,7 @@
 //! # Ok::<(), serde_json::Error>(())
 //! ```
 
+pub mod agent_tools;
 pub mod audit;
 pub mod config;
 pub mod method;
@@ -118,6 +121,10 @@ pub mod sanitize;
 pub mod transport;
 pub mod version;
 
+pub use agent_tools::{
+    AgentToolEffect, AgentToolSpec, ArgsError, RegistryTool, normalize_tool_arguments,
+    registry_tool_specs,
+};
 pub use audit::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord,
     NewMcpWriteRecord,
@@ -141,9 +148,9 @@ pub use sanitize::{
     strip_instruction_fences, truncate_utf8_safe,
 };
 pub use transport::{
-    AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthChallenge,
-    McpAuthorizationContext, McpClientInfo, McpInitializeResult, McpRemoteTool,
-    McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
-    SUPPORTED_PROTOCOL_VERSIONS,
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
+    LATEST_PROTOCOL_VERSION, McpAuthChallenge, McpAuthorizationContext, McpClientInfo,
+    McpInitializeResult, McpRemoteTool, McpServerToolResult, McpSseEvent, McpToolContent,
+    McpToolResult, ProtectedResourceMetadata, SUPPORTED_PROTOCOL_VERSIONS,
 };
 pub use version::{CONTRACT_VERSION, is_compatible};

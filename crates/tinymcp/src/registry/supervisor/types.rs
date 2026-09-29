@@ -1,11 +1,13 @@
 //! The supervisor and its cycle.
 
 use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
+use std::ops::Deref;
 use std::time::{Duration, Instant};
 
 use super::backoff::BackoffState;
 use super::report::{ServerRef, SupervisorEvent, TickReport};
-use crate::registry::{Connections, OAuthFlow, ProbeOutcome, Store};
+use crate::registry::{Connections, McpRegistry, OAuthFlow, ProbeOutcome, Store};
 use tinymcp_bus::{InstalledServer, McpClientIdentityConfig, McpProxyConfig};
 
 /// How many consecutive probe timeouts end the session.
@@ -65,6 +67,26 @@ impl Default for SupervisorConfig {
             probe_timeout: Duration::from_secs(8),
         }
     }
+}
+
+/// One registry for [`Supervisor::run_many`] to supervise, as the host lists
+/// it on each tick.
+///
+/// The identity and proxy are what a reconnect dials with. They ride along
+/// because [`McpRegistry`] keeps its own private, and a reconnect must present
+/// the same identity the registry's connections do.
+#[derive(Debug, Clone)]
+pub struct SupervisedHost<K, R> {
+    /// What tells this host apart from the others — a workspace path, say.
+    /// Backoff and parking are kept per key across ticks.
+    pub key: K,
+    /// The registry: anything that dereferences to something holding one,
+    /// such as an `Arc<McpRegistry>` or an `Arc` of a host's own wrapper.
+    pub registry: R,
+    /// The identity a reconnect presents.
+    pub identity: McpClientIdentityConfig,
+    /// The proxy a reconnect dials through, already resolved by the host.
+    pub proxy: Option<McpProxyConfig>,
 }
 
 /// Keeps installed servers connected.
@@ -144,6 +166,66 @@ impl Supervisor {
             // has no one to hand it to, and everything in it was logged as it
             // happened.
             self.tick(store, connections, oauth, Instant::now()).await;
+        }
+    }
+
+    /// Runs one supervisor per host until the future is dropped.
+    ///
+    /// For a process holding more than one registry — one per open workspace,
+    /// say — where [`Self::run`] would need a task each. Every tick asks
+    /// `hosts` for the registries open *now*, so one opened after start is
+    /// supervised from the next tick; each key gets its own [`Supervisor`],
+    /// built on first sight from that host's identity and proxy and kept
+    /// across ticks, so backoff and parking carry over. `on_report` receives
+    /// each host's [`TickReport`], in the order `hosts` listed them.
+    ///
+    /// The first tick is delayed a whole interval, as [`Self::run`]'s is. A
+    /// cycle walks every host's installs in sequence and can outlast its
+    /// interval, so the next tick is paced from when the cycle *finished*:
+    /// a slow cycle is followed by a full interval of quiet rather than by an
+    /// overdue tick that starts at once.
+    pub async fn run_many<K, R, H, F>(config: SupervisorConfig, mut hosts: H, mut on_report: F)
+    where
+        K: Eq + Hash + Clone,
+        R: Deref,
+        R::Target: AsRef<McpRegistry>,
+        H: FnMut() -> Vec<SupervisedHost<K, R>>,
+        F: FnMut(&K, &TickReport),
+    {
+        let mut supervisors: HashMap<K, Self> = HashMap::new();
+        let start = tokio::time::Instant::now() + config.tick_interval;
+        let mut interval = tokio::time::interval_at(start, config.tick_interval);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
+        tracing::info!(
+            tick_seconds = config.tick_interval.as_secs(),
+            probe_seconds = config.probe_timeout.as_secs(),
+            "the mcp supervisor started for every open registry"
+        );
+
+        loop {
+            interval.tick().await;
+            let now = Instant::now();
+
+            for host in hosts() {
+                let registry = host.registry.deref().as_ref();
+                let supervisor = supervisors
+                    .entry(host.key.clone())
+                    .or_insert_with(|| Self::new(config.clone(), host.identity, host.proxy));
+                let report = supervisor
+                    .tick(
+                        registry.store(),
+                        registry.connections(),
+                        registry.oauth(),
+                        now,
+                    )
+                    .await;
+                on_report(&host.key, &report);
+            }
+
+            // `Delay` alone schedules the next deadline an interval after the
+            // overdue tick *returned*, which is when this cycle started.
+            interval.reset();
         }
     }
 

@@ -51,15 +51,12 @@ use headers::{
 };
 use sse::{first_complete_sse_data, parse_sse_events, parse_sse_message};
 use tinymcp_bus::{
-    AuthorizationServerMetadata, LATEST_PROTOCOL_VERSION, McpAuthConfig, McpAuthorizationContext,
-    McpClientIdentityConfig, McpClientInfo, McpInitializeResult, McpProxyConfig, McpRemoteTool,
-    McpServerToolResult, McpSseEvent, ProtectedResourceMetadata,
+    AuthorizationServerMetadata, HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID,
+    LATEST_PROTOCOL_VERSION, McpAuthConfig, McpAuthorizationContext, McpClientIdentityConfig,
+    McpClientInfo, McpInitializeResult, McpProxyConfig, McpRemoteTool, McpServerToolResult,
+    McpSseEvent, ProtectedResourceMetadata,
 };
 
-/// The `MCP-Protocol-Version` request header.
-const HEADER_PROTOCOL_VERSION: &str = "MCP-Protocol-Version";
-/// The `Mcp-Session-Id` header, carried in both directions.
-const HEADER_SESSION_ID: &str = "Mcp-Session-Id";
 /// The `Mcp-Method` request header, which some servers route on.
 const HEADER_METHOD: &str = "Mcp-Method";
 /// The `Mcp-Name` request header, carrying the tool name on a call.

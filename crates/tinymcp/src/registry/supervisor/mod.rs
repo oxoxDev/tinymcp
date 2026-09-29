@@ -35,14 +35,15 @@
 //! host decides which of those its user should hear about, and where — an
 //! event log, a notification for a server that stays down — without this
 //! crate guessing at that policy. [`Supervisor::run`] drops the report; it is
-//! for a host that drives the cycle itself.
+//! for a host that drives the cycle itself. [`Supervisor::run_many`] drives one
+//! supervisor per registry a host holds and hands each report back.
 
 mod backoff;
 mod report;
 mod types;
 
 pub use report::{ServerRef, SupervisorEvent, TickReport};
-pub use types::{Supervisor, SupervisorConfig};
+pub use types::{SupervisedHost, Supervisor, SupervisorConfig};
 
 #[cfg(test)]
 mod test;

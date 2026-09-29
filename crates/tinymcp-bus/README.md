@@ -12,6 +12,7 @@ vocabulary has to be published as an ordinary library. This is it.
 | ---------- | ------------------------------------------------------------ |
 | `names`    | interface name, object path, one constant per member          |
 | `greeting` | the value vocabulary: the `Greet` request and response        |
+| `agent_tools` | tool specs a host exposes to a model, and argument normalization |
 | `version`  | `CONTRACT_VERSION` and the bind rule a host applies to it     |
 
 Two dependencies, both pure Rust: `serde` and `serde_json`.
