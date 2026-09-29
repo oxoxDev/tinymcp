@@ -488,11 +488,11 @@ async fn a_configured_server_caches_its_listing_and_is_callable() {
 }
 
 #[test]
-fn a_tool_advertised_three_times_is_registered_twice_at_most() {
+fn a_tool_one_server_lists_twice_is_built_once() {
     let source = McpToolSource::from_overview(&overview("a", "srv", &["dup", "dup", "dup"]));
     let tools = tools_for(&[source], &unreachable());
-    assert_eq!(tools.len(), 2);
-    assert_ne!(tools[0].name(), tools[1].name());
+    assert_eq!(tools.len(), 1);
+    assert_eq!(tools[0].name(), "mcp_srv_dup");
 }
 
 #[test]

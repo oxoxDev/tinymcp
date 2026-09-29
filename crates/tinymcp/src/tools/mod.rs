@@ -51,9 +51,9 @@ pub use tool::McpServerTool;
 ///
 /// Sources are taken in server order and tools in name order, so the result —
 /// and which of two colliding tools gets the plain name — is the same on every
-/// call. A tool with a blank name is skipped. A name two servers would share
-/// goes to the first; the second gets
-/// [`naming::disambiguated_tool_name`].
+/// call. A tool with a blank name is skipped, and a tool one server lists twice
+/// is built once. A name two servers would share goes to the first; the second
+/// gets [`naming::disambiguated_tool_name`].
 #[must_use]
 pub fn tools_for(
     sources: &[McpToolSource],
@@ -67,6 +67,8 @@ pub fn tools_for(
     for source in ordered {
         let mut tools: Vec<&tinymcp_bus::McpTool> = source.tools.iter().collect();
         tools.sort_by(|left, right| left.name.cmp(&right.name));
+        // A server that lists one tool twice has one tool.
+        tools.dedup_by(|left, right| left.name == right.name);
         for tool in tools {
             if tool.name.trim().is_empty() {
                 continue;
@@ -77,11 +79,6 @@ pub fn tools_for(
                     naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);
             }
             if !taken.insert(name.clone()) {
-                tracing::debug!(
-                    server_id = %source.server_id,
-                    tool = %tool.name,
-                    "skipping a tool whose name is advertised twice"
-                );
                 continue;
             }
             built.push(McpServerTool::new(name, source, tool, Arc::clone(invoker)));
