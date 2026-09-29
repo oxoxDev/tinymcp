@@ -81,7 +81,7 @@ impl McpService {
     ///
     /// Returns without waiting for either: connecting is a handshake per
     /// server, and a load that waited on it would turn one broken third-party
-    /// endpoint into a failed load. See [`super::maintenance`].
+    /// endpoint into a failed load. See the module notes on `maintenance`.
     ///
     /// Must be awaited from within a Tokio runtime, which a module's `setup`
     /// always is. A service that never calls this — a host using the crate as

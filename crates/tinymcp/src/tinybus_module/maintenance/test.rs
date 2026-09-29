@@ -230,7 +230,7 @@ async fn the_interval_pacing_runs_one_cycle_per_interval_and_not_before() {
     maintenance.booted().await;
 
     // Just short of the first interval: nothing has run.
-    tokio::time::advance(interval - Duration::from_secs(1)).await;
+    tokio::time::advance(Duration::from_secs(59)).await;
     tokio::task::yield_now().await;
     assert!(reports.try_recv().is_err());
 
