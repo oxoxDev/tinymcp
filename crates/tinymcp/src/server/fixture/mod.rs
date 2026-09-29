@@ -39,7 +39,7 @@ impl McpServerHandler for DemoHandler {
         }
     }
 
-    fn source_type_prefix(&self) -> &str {
+    fn source_type_prefix(&self) -> &'static str {
         "demo"
     }
 

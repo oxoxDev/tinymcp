@@ -1,7 +1,7 @@
 //! Unit tests for the JSON-RPC protocol layer.
 //!
 //! The expectations are whole response lines, byte for byte. These are the
-//! same shapes OpenHuman's golden fixtures pinned before the protocol moved
+//! same shapes `OpenHuman`'s golden fixtures pinned before the protocol moved
 //! here, so a diff in this file is a wire change.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

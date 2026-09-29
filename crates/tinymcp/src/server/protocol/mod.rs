@@ -269,7 +269,7 @@ async fn call_tool(
     params: Value,
 ) -> Value {
     let request_id = id.to_string();
-    let (name, arguments) = match parse_tool_call_params(params) {
+    let (name, arguments) = match parse_tool_call_params(&params) {
         Ok(parsed) => parsed,
         Err(message) => {
             tracing::debug!(
@@ -362,7 +362,7 @@ fn initialize_result(info: &ServerInfo, params: &Value) -> Value {
 ///
 /// Absent or `null` arguments are `{}`, and an object JSON-encoded into a
 /// string is decoded; anything else is refused naming what arrived.
-fn parse_tool_call_params(params: Value) -> Result<(String, Map<String, Value>), String> {
+fn parse_tool_call_params(params: &Value) -> Result<(String, Map<String, Value>), String> {
     let object = params
         .as_object()
         .ok_or_else(|| "tools/call params must be an object".to_string())?;
@@ -384,11 +384,7 @@ fn sorted_keys(object: &Map<String, Value>) -> Vec<&str> {
 }
 
 fn success_response(id: Value, result: Value) -> Value {
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "result": result,
-    })
+    envelope(id, "result", result)
 }
 
 fn error_response(id: Value, code: i64, message: &str, data: Option<Value>) -> Value {
@@ -398,11 +394,16 @@ fn error_response(id: Value, code: i64, message: &str, data: Option<Value>) -> V
     if let Some(data) = data {
         error.insert("data".to_string(), data);
     }
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "error": Value::Object(error),
-    })
+    envelope(id, "error", Value::Object(error))
+}
+
+/// A JSON-RPC 2.0 response carrying `body` under `kind` (`result`/`error`).
+fn envelope(id: Value, kind: &str, body: Value) -> Value {
+    let mut response = Map::new();
+    response.insert("jsonrpc".to_string(), Value::from("2.0"));
+    response.insert("id".to_string(), id);
+    response.insert(kind.to_string(), body);
+    Value::Object(response)
 }
 
 fn valid_request_id(id: &Value) -> bool {

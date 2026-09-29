@@ -25,6 +25,7 @@
 
 use std::collections::HashMap;
 use std::convert::Infallible;
+use std::fmt::Write as _;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -181,7 +182,7 @@ async fn handle_post(
         );
     };
 
-    if let Err(response) = check_session(&state, session_id, protocol_version) {
+    if let Some(response) = reject_session(&state, session_id, protocol_version) {
         return response;
     }
 
@@ -261,7 +262,7 @@ async fn handle_get(State(state): State<AppState>, headers: HeaderMap) -> Respon
         return text_error(StatusCode::BAD_REQUEST, "missing Mcp-Session-Id header");
     };
 
-    if let Err(response) = check_session(&state, session_id, protocol_version) {
+    if let Some(response) = reject_session(&state, session_id, protocol_version) {
         return response;
     }
 
@@ -312,13 +313,13 @@ async fn handle_delete(State(state): State<AppState>, headers: HeaderMap) -> Res
     StatusCode::NO_CONTENT.into_response()
 }
 
-/// Confirms `session_id` is live and `protocol_version` is the one it
-/// negotiated; the `Err` is the rejection to send.
-fn check_session(
+/// The rejection to send unless `session_id` is live and `protocol_version`
+/// is the one it negotiated.
+fn reject_session(
     state: &AppState,
     session_id: &str,
     protocol_version: Option<&str>,
-) -> std::result::Result<(), Response> {
+) -> Option<Response> {
     let expected_protocol = {
         let sessions = state.sessions.lock();
         let Some(record) = sessions.get(session_id) else {
@@ -328,7 +329,7 @@ fn check_session(
                 protocol_version,
                 None,
             );
-            return Err(text_error(
+            return Some(text_error(
                 StatusCode::NOT_FOUND,
                 "unknown or expired MCP session",
             ));
@@ -343,12 +344,12 @@ fn check_session(
             protocol_version,
             Some(expected_protocol.as_str()),
         );
-        return Err(text_error(
+        return Some(text_error(
             StatusCode::BAD_REQUEST,
             "missing or invalid MCP-Protocol-Version header",
         ));
     }
-    Ok(())
+    None
 }
 
 fn check_auth(state: &AppState, headers: &HeaderMap) -> Option<Response> {
@@ -390,12 +391,12 @@ fn header_value<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
 
 fn redact_session_id(session_id: &str) -> String {
     let digest = Sha256::digest(session_id.as_bytes());
-    let prefix = digest
-        .iter()
-        .take(4)
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    format!("sha256:{prefix}")
+    let mut redacted = String::from("sha256:");
+    for byte in digest.iter().take(4) {
+        // Writing to a `String` cannot fail.
+        let _ = write!(redacted, "{byte:02x}");
+    }
+    redacted
 }
 
 fn log_request_rejected(

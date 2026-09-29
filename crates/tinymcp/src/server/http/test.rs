@@ -3,7 +3,7 @@
 //! Every request goes over a real loopback socket. Status codes, plain-text
 //! rejection bodies, content types, the session header and the SSE framing
 //! are wire behavior a remote client depends on; the expectations match the
-//! golden fixtures OpenHuman pinned before this transport moved here.
+//! golden fixtures `OpenHuman` pinned before this transport moved here.
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
