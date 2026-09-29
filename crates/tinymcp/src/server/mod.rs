@@ -9,11 +9,15 @@
 pub mod args;
 #[cfg(test)]
 mod fixture;
+#[cfg(feature = "server-http")]
+mod http;
 mod protocol;
 mod session;
 mod stdio;
 mod types;
 
+#[cfg(feature = "server-http")]
+pub use http::{HttpServerConfig, run_http, run_http_reporting};
 pub use protocol::{handle_line, handle_value};
 pub use session::ClientSession;
 pub use stdio::run_stdio;
