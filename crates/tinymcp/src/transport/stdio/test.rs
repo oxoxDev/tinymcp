@@ -495,3 +495,50 @@ fn any_other_write_failure_says_what_was_being_attempted() {
     assert!(message.contains("weather-mcp"), "{message}");
     assert!(!message.contains("closed its output"), "{message}");
 }
+
+// ---------------------------------------------------------------------------
+// Windows command resolution
+// ---------------------------------------------------------------------------
+
+/// A bare name that only resolves through `PATHEXT` must reach its spawn.
+///
+/// `locate_command` enumerates the `PATHEXT` variants, so the preflight accepts
+/// `probe-tool` on the strength of `probe-tool.cmd`. The spawn then has to use
+/// what the preflight found. `CreateProcessW` appends only `.exe` when it
+/// resolves a bare name, and it searches the *parent's* `PATH` rather than the
+/// environment being handed to the child — so passing it the bare name fails on
+/// a machine where the preflight just proved the command is present.
+///
+/// That is every Windows install running an `npx`-launched server: npm writes
+/// `<command>.cmd`, which Windows can execute, beside an extensionless POSIX
+/// shim, which it cannot.
+///
+/// The assertion is on the *kind* of failure rather than on success. The shim
+/// exits without speaking MCP, so the handshake fails either way; what must not
+/// happen is failing at the spawn, one step after the preflight passed.
+#[cfg(windows)]
+#[tokio::test]
+async fn a_bare_name_resolved_through_pathext_reaches_its_spawn() {
+    let dir = tempfile::tempdir().expect("a temp dir");
+    std::fs::write(dir.path().join("probe-tool.cmd"), "@ECHO OFF\r\nEXIT /B 0\r\n")
+        .expect("write the shim");
+
+    let client = client_for(
+        "probe-tool",
+        vec![(
+            "PATH".to_string(),
+            dir.path().to_string_lossy().into_owned(),
+        )],
+    );
+
+    let error = client
+        .initialize()
+        .await
+        .expect_err("the shim does not speak MCP");
+
+    assert!(
+        !error.to_string().contains("spawning"),
+        "the preflight resolved `probe-tool.cmd`, then the spawn was handed the \
+         bare name and failed: {error}"
+    );
+}
