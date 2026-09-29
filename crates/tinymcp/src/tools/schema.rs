@@ -20,7 +20,9 @@ pub fn tool_parameters(input_schema: &Value) -> Value {
         json!({ "type": "object", "properties": {} })
     };
     if let Value::Object(map) = &mut schema {
-        map.entry("type").or_insert_with(|| json!("object"));
+        if map.get("type") != Some(&json!("object")) {
+            map.insert("type".to_string(), json!("object"));
+        }
     }
     sanitize_schema_text(&mut schema);
     schema

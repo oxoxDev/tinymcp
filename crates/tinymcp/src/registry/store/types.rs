@@ -225,8 +225,11 @@ impl Store {
     ///
     /// Returns [`Error::Store`] when the delete fails.
     pub fn delete_server(&self, server_id: &str) -> Result<bool> {
-        let connection = self.connection.lock();
-        let removed = connection
+        let mut connection = self.connection.lock();
+        let transaction = connection
+            .transaction()
+            .map_err(|source| Error::store("starting a server delete", source))?;
+        let removed = transaction
             .execute(
                 "DELETE FROM mcp_servers WHERE server_id = ?1",
                 params![server_id],
@@ -235,12 +238,15 @@ impl Store {
         // The tool cache is keyed by the same identifier but carries no foreign
         // key (static servers share the table), so it goes by hand. An
         // uninstalled server must not keep surfacing tools.
-        connection
+        transaction
             .execute(
                 "DELETE FROM mcp_tool_cache WHERE server_key = ?1",
                 params![server_id],
             )
             .map_err(|source| Error::store("forgetting a server's tools", source))?;
+        transaction
+            .commit()
+            .map_err(|source| Error::store("committing a server delete", source))?;
         Ok(removed > 0)
     }
 

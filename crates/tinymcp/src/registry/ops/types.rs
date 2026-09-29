@@ -276,8 +276,12 @@ impl McpRegistry {
     ) -> Result<InstallOutcome> {
         if !env.is_empty() {
             let mut merged = self.store.load_env_values(&existing.server_id)?;
+            let credentials_changed = env.iter().any(|(key, value)| merged.get(key) != Some(value));
             merged.extend(env.clone());
             self.store.set_env_values(&existing.server_id, &merged)?;
+            if credentials_changed {
+                self.store.forget_cached_tools(&existing.server_id)?;
+            }
 
             let names: Vec<String> = merged.keys().cloned().collect();
             if existing.env_keys != names {
@@ -586,6 +590,7 @@ impl McpRegistry {
     /// carries no tools.
     pub async fn oauth_complete(&self, state: &str, code: &str) -> Result<ConnectOutcome> {
         let server_id = self.oauth.complete(&self.store, state, code).await?;
+        self.store.forget_cached_tools(&server_id)?;
 
         match self.connect(&server_id).await {
             Ok(outcome) => Ok(outcome),

@@ -49,11 +49,9 @@ pub use tool::McpServerTool;
 /// One tool per advertised tool of each source, named, described, and wired
 /// to `invoker`.
 ///
-/// Sources are taken in server order and tools in name order, so the result —
-/// and which of two colliding tools gets the plain name — is the same on every
-/// call. A tool with a blank name is skipped, and a tool one server lists twice
-/// is built once. A name two servers would share goes to the first; the second
-/// gets [`naming::disambiguated_tool_name`].
+/// Sources are taken in server order and tools in name order, so the result is
+/// the same on every call. A tool with a blank name is skipped, and a tool one server lists twice
+/// is built once. Collisions get stable server-specific names.
 #[must_use]
 pub fn tools_for(
     sources: &[McpToolSource],
@@ -73,10 +71,21 @@ pub fn tools_for(
             if tool.name.trim().is_empty() {
                 continue;
             }
-            let mut name = naming::tool_name(&source.label, &tool.name);
+            let base_name = naming::tool_name(&source.label, &tool.name);
+            let collides = sources.iter().any(|other| {
+                other.server_id != source.server_id
+                    && other.tools.iter().any(|candidate| {
+                        !candidate.name.trim().is_empty()
+                            && naming::tool_name(&other.label, &candidate.name) == base_name
+                    })
+            });
+            let mut name = if collides {
+                naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name)
+            } else {
+                base_name
+            };
             if taken.contains(&name) {
-                name =
-                    naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);
+                name = naming::disambiguated_tool_name(&source.server_id, &source.label, &tool.name);
             }
             if !taken.insert(name.clone()) {
                 continue;

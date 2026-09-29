@@ -588,6 +588,12 @@ fn build_transport(
 fn static_fingerprint(server: &McpServerConfig) -> String {
     let mut env_keys: Vec<&str> = server.env.keys().map(String::as_str).collect();
     env_keys.sort_unstable();
+    let mut env: Vec<(&str, &str)> = server
+        .env
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_str()))
+        .collect();
+    env.sort_unstable_by_key(|(key, _)| *key);
     let mut allowed = normalize_tool_names(&server.allowed_tools);
     allowed.sort();
     let mut disallowed = normalize_tool_names(&server.disallowed_tools);
@@ -598,9 +604,28 @@ fn static_fingerprint(server: &McpServerConfig) -> String {
         &server.args.join("\0"),
         server.cwd.as_deref().unwrap_or_default(),
         &env_keys.join("\0"),
+        &serde_json::to_string(&env).unwrap_or_default(),
+        &auth_fingerprint_identity(&server.auth),
         &allowed.join("\0"),
         &disallowed.join("\0"),
     ])
+}
+
+/// Stable, non-secret identity for the configured authentication scheme.
+fn auth_fingerprint_identity(auth: &McpAuthConfig) -> String {
+    match auth {
+        McpAuthConfig::None => "none".to_string(),
+        McpAuthConfig::BearerToken { .. } => "bearer".to_string(),
+        McpAuthConfig::Basic { .. } => "basic".to_string(),
+        McpAuthConfig::Header { name, .. } => format!("header:{name}"),
+        McpAuthConfig::Headers { headers } => {
+            let mut names: Vec<&str> = headers.iter().map(|header| header.name.as_str()).collect();
+            names.sort_unstable();
+            format!("headers:{}", names.join("\0"))
+        }
+        McpAuthConfig::QueryParam { name, .. } => format!("query:{name}"),
+        _ => "other".to_string(),
+    }
 }
 
 /// A listed tool in the shape the cache stores.
