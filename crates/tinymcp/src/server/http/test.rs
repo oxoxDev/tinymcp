@@ -457,7 +457,9 @@ async fn get_streams_only_this_sessions_events_as_sse() {
         .expect("event bytes");
         text.push_str(&String::from_utf8_lossy(&chunk));
     }
-    assert_eq!(text, "event: test\ndata: {\"ok\":true}\n\ndata: plain\n\n");
+    // Fields are framed in the order the transport sets them: data, then
+    // the event name. The other session's event never arrives.
+    assert_eq!(text, "data: {\"ok\":true}\nevent: test\n\ndata: plain\n\n");
 }
 
 // ---------------------------------------------------------------------------
@@ -520,4 +522,12 @@ async fn an_address_already_in_use_is_a_bind_error() {
         Error::ServerBind { addr, .. } => assert_eq!(addr, bind_addr),
         other => panic!("expected ServerBind, got {other:?}"),
     }
+}
+
+#[test]
+fn session_ids_are_logged_as_a_short_digest() {
+    let redacted = super::redact_session_id("0b7c5c0e-7d3f-4a53-9a2c-3f1f6f4f8a11");
+    assert!(redacted.starts_with("sha256:"), "{redacted}");
+    assert_eq!(redacted.len(), "sha256:".len() + 8);
+    assert!(!redacted.contains("0b7c5c0e"));
 }
