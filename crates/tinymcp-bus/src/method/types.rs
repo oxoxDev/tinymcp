@@ -3,7 +3,10 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{InstalledServer, McpAuthHint, McpTool, RegistryServerSummary};
+use crate::{
+    InstalledServer, McpAuthHint, McpServerToolResult, McpTool, McpToolResult,
+    RegistryServerDetail, RegistryServerSummary,
+};
 
 /// One page of catalog results.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -60,6 +63,57 @@ pub struct ToolCallOutcome {
     /// Whether the tool reported a failure.
     #[serde(default)]
     pub is_error: bool,
+    /// The reply rendered for a caller: text blocks joined, errors flagged.
+    ///
+    /// Present so a host need not re-implement the protocol's content-block
+    /// encoding to show or feed a result onward. Defaults to an empty result
+    /// when absent, which is what a module older than contract 1.1 sends.
+    #[serde(default)]
+    pub rendered: McpToolResult,
+}
+
+impl From<McpServerToolResult> for ToolCallOutcome {
+    fn from(result: McpServerToolResult) -> Self {
+        Self {
+            is_error: result.rendered.is_error,
+            result: result.raw_result,
+            rendered: result.rendered,
+        }
+    }
+}
+
+/// One server's detail plus the credentials installing it would need.
+///
+/// The two travel together because a caller rendering an install form needs
+/// both, and fetching them separately would mean two catalog round trips for
+/// one screen. Returned by `RegistryGet`, `SetupGet` and `ConfigAssist`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ServerDetail {
+    /// What the catalog says about the server.
+    pub server: RegistryServerDetail,
+    /// The credential names an install will actually need.
+    pub required_env_keys: Vec<String>,
+}
+
+/// Which curation `RegistrySearchCurated` applies to a page of results.
+///
+/// Both switches default to off, so `{}` asks for exactly what
+/// `RegistrySearch` returns. Curation is the module's own list of canonical
+/// first-party servers; a host cannot reproduce it faithfully because the list
+/// is data the module owns.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SearchCuration {
+    /// Set `official` on the canonical first-party servers and clear it on
+    /// every other row.
+    #[serde(default)]
+    pub tag_official: bool,
+    /// Float the `official` rows to the top of the page, keeping the upstream
+    /// order among the rest.
+    ///
+    /// Sorts on the flag as it stands after tagging, so it is only meaningful
+    /// beside [`Self::tag_official`] or for rows already flagged.
+    #[serde(default)]
+    pub official_first: bool,
 }
 
 /// Where a server stands after its credentials were replaced.
