@@ -191,6 +191,21 @@ pub enum Error {
         server: String,
     },
 
+    /// A tool call's `arguments` could not be read as a JSON object.
+    ///
+    /// Refused before anything is sent: MCP requires an object, and a server
+    /// handed anything else answers with an error that names the protocol
+    /// rather than the value. The message is the reason
+    /// [`tinymcp_bus::normalize_tool_arguments`] gave, which names what
+    /// arrived, because it is read by the model that sent it.
+    #[error("invalid arguments for tool `{tool}`: {reason}")]
+    InvalidArguments {
+        /// The tool the call was aimed at.
+        tool: String,
+        /// Why the arguments were refused.
+        reason: tinymcp_bus::ArgsError,
+    },
+
     /// A named server is not configured or not installed.
     #[error("unknown mcp server `{server}`")]
     UnknownServer {
