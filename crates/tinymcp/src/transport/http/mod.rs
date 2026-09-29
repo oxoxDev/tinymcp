@@ -39,7 +39,7 @@ use std::time::Duration;
 use futures_util::StreamExt;
 use parking_lot::Mutex;
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderName, HeaderValue};
-use reqwest::{RequestBuilder, Response, StatusCode};
+use reqwest::{RequestBuilder, Response, StatusCode, Url};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -815,21 +815,48 @@ impl McpHttpClient {
         issuer: &str,
     ) -> Result<AuthorizationServerMetadata> {
         let trimmed = issuer.trim_end_matches('/');
-
-        let oauth_url = format!("{trimmed}/.well-known/oauth-authorization-server");
+        let parsed_issuer = Url::parse(trimmed).map_err(|error| {
+            Error::malformed(format!("invalid authorization server issuer: {error}"))
+        })?;
+        let issuer_path = parsed_issuer.path().trim_end_matches('/');
+        let oauth_url = format!(
+            "{}://{}{}{}{}",
+            parsed_issuer.scheme(),
+            parsed_issuer.host_str().unwrap_or_default(),
+            parsed_issuer
+                .port()
+                .map_or(String::new(), |port| format!(":{port}")),
+            "/.well-known/oauth-authorization-server",
+            issuer_path
+        );
         let oidc_url = format!("{trimmed}/.well-known/openid-configuration");
 
         let oauth = self
             .fetch_json::<AuthorizationServerMetadata>(&oauth_url)
             .await;
         match oauth {
-            Ok(metadata) if has_every_endpoint(&metadata) => Ok(metadata),
+            Ok(metadata)
+                if metadata_matches_issuer(&metadata, trimmed) && has_every_endpoint(&metadata) =>
+            {
+                Ok(metadata)
+            }
+            Ok(metadata) if !metadata_matches_issuer(&metadata, trimmed) => {
+                tracing::debug!(issuer = %redact_endpoint(trimmed), "[mcp] rfc 8414 issuer did not match, trying oidc discovery");
+                let oidc = self
+                    .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
+                    .await?;
+                validate_metadata_issuer(&oidc, trimmed)?;
+                Ok(oidc)
+            }
             Ok(metadata) => {
                 match self
                     .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
                     .await
                 {
-                    Ok(oidc) => Ok(fill_missing_metadata(metadata, oidc)),
+                    Ok(oidc) if metadata_matches_issuer(&oidc, trimmed) => {
+                        Ok(fill_missing_metadata(metadata, oidc))
+                    }
+                    Ok(_) => Ok(metadata),
                     Err(error) => {
                         tracing::debug!(
                             issuer = %redact_endpoint(trimmed),
@@ -844,8 +871,11 @@ impl McpHttpClient {
                     issuer = %redact_endpoint(trimmed),
                     "[mcp] rfc 8414 metadata unavailable, trying oidc discovery: {oauth_error}"
                 );
-                self.fetch_json::<AuthorizationServerMetadata>(&oidc_url)
-                    .await
+                let metadata = self
+                    .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
+                    .await?;
+                validate_metadata_issuer(&metadata, trimmed)?;
+                Ok(metadata)
             }
         }
     }
@@ -931,6 +961,20 @@ impl McpHttpClient {
         // parser gives a clearer error, and recovers a final frame that was
         // never followed by a blank line.
         parse_sse_message(&String::from_utf8_lossy(&raw))
+    }
+}
+
+fn metadata_matches_issuer(metadata: &AuthorizationServerMetadata, issuer: &str) -> bool {
+    metadata.issuer.trim_end_matches('/') == issuer.trim_end_matches('/')
+}
+
+fn validate_metadata_issuer(metadata: &AuthorizationServerMetadata, issuer: &str) -> Result<()> {
+    if metadata_matches_issuer(metadata, issuer) {
+        Ok(())
+    } else {
+        Err(Error::malformed(
+            "authorization server metadata issuer did not match",
+        ))
     }
 }
 
