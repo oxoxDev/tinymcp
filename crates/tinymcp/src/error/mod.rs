@@ -287,6 +287,13 @@ pub enum Error {
 }
 
 impl Error {
+    /// Builds a [`Self::ServerIo`] from a stream failure.
+    pub(crate) fn server_io(source: std::io::Error) -> Self {
+        Self::ServerIo {
+            source: Box::new(source),
+        }
+    }
+
     /// Builds a [`Self::Transport`] for `endpoint`, redacting it.
     ///
     /// The URL is stripped from the underlying `reqwest` error before it is

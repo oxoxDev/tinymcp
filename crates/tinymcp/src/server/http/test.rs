@@ -129,7 +129,7 @@ async fn the_http_client_round_trips_initialize_tools_and_calls() {
         .call_tool("echo", json!({"a": 1}))
         .await
         .expect("tools/call");
-    assert_eq!(result.content[0]["text"], r#"{"a":1}"#);
+    assert_eq!(result.raw_result["content"][0]["text"], r#"{"a":1}"#);
 
     client.close_session().await.expect("DELETE session");
 }

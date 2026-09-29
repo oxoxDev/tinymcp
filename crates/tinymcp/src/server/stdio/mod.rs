@@ -34,7 +34,7 @@ where
     // Stdio carries no transport headers.
     let headers = RequestHeaders::new();
     let mut lines = BufReader::new(reader).lines();
-    while let Some(line) = lines.next_line().await.map_err(server_io)? {
+    while let Some(line) = lines.next_line().await.map_err(Error::server_io)? {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             continue;
@@ -43,19 +43,13 @@ where
             writer
                 .write_all(response.as_bytes())
                 .await
-                .map_err(server_io)?;
-            writer.write_all(b"\n").await.map_err(server_io)?;
-            writer.flush().await.map_err(server_io)?;
+                .map_err(Error::server_io)?;
+            writer.write_all(b"\n").await.map_err(Error::server_io)?;
+            writer.flush().await.map_err(Error::server_io)?;
         }
     }
     tracing::debug!("[mcp_server] stdin closed; exiting");
     Ok(())
-}
-
-fn server_io(source: std::io::Error) -> Error {
-    Error::ServerIo {
-        source: Box::new(source),
-    }
 }
 
 #[cfg(test)]
