@@ -93,8 +93,8 @@ rusqlite = { version = "0.40", features = ["bundled"] }
 # Locating a user's home directory, to find the version-manager shim
 # directories a desktop launch's stripped PATH leaves out.
 dirs = "7"
-# PKCE code challenges. The authorization-code flow hashes its verifier with
-# SHA-256 and nothing else in the tree needs a digest.
+# SHA-256: PKCE code challenges in the authorization-code flow, and the digest
+# in an action tool's name (`tinymcp-bus`'s `agent_tools::searchable_name`).
 sha2 = "0.11"
 # Install identifiers.
 uuid = { version = "1", features = ["v4"] }
