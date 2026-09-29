@@ -238,7 +238,7 @@ fn parse_credentials(
         Some(_) => {
             return Err(format!(
                 "`{name}`.{credential_field} maps a name to a string value"
-            ))
+            ));
         }
     };
     Ok(credentials)
@@ -322,4 +322,3 @@ pub fn merge_credentials(
     }
     merged
 }
-

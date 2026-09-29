@@ -83,9 +83,9 @@ pub use config_servers::{
 };
 pub use error::{Error, Result};
 pub use registry::{
-    AuthDetection, AuthKind, Connections, McpRegistry, OAuthFlow, ProbeOutcome,
-    REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, Supervisor, SupervisorConfig,
-    SupervisorEvent, TickReport,
+    AppliedServer, AuthDetection, AuthKind, ConfigApplyReport, Connections, McpRegistry, OAuthFlow,
+    ProbeOutcome, REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, Supervisor,
+    SupervisorConfig, SupervisorEvent, TickReport,
 };
 #[cfg(feature = "module")]
 pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};

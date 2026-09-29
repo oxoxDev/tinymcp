@@ -206,6 +206,17 @@ pub enum Error {
         reason: tinymcp_bus::ArgsError,
     },
 
+    /// An `mcp.json` document was refused.
+    ///
+    /// Rendered as the bare sentence, with no prefix: it is shown beside the
+    /// user's own text in an editor, and it already names the entry and the
+    /// field.
+    #[error("{detail}")]
+    ConfigDoc {
+        /// Which entry and field were refused, and why.
+        detail: String,
+    },
+
     /// A named server is not configured or not installed.
     #[error("unknown mcp server `{server}`")]
     UnknownServer {

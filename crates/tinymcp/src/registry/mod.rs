@@ -21,6 +21,7 @@ pub mod store;
 pub mod supervisor;
 
 pub use boot::{BootOutcome, connect_installed_servers};
+pub use config_doc::{AppliedServer, ConfigApplyReport};
 pub use connections::{Connections, ProbeOutcome, REMOTE_REQUEST_TIMEOUT};
 pub use oauth::{AuthDetection, AuthKind, OAuthFlow};
 pub use ops::McpRegistry;

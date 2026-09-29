@@ -10,7 +10,9 @@
 use std::collections::BTreeMap;
 
 use serde_json::json;
-use tinymcp_bus::{CommandKind, InstalledServer, McpClientIdentityConfig, McpRegistryAuthConfig, Transport};
+use tinymcp_bus::{
+    CommandKind, InstalledServer, McpClientIdentityConfig, McpRegistryAuthConfig, Transport,
+};
 
 use super::*;
 use crate::Error;
@@ -260,7 +262,10 @@ fn merging_credentials_replaces_removes_and_keeps() {
 fn a_refusal_is_a_config_doc_error_carrying_the_sentence_verbatim() {
     let error = parse(&json!({})).expect_err("refused");
     assert!(matches!(error, Error::ConfigDoc { .. }), "{error:?}");
-    assert_eq!(error.to_string(), "no `mcpServers` key — every server lives under it");
+    assert_eq!(
+        error.to_string(),
+        "no `mcpServers` key — every server lives under it"
+    );
 }
 
 #[test]
@@ -357,7 +362,11 @@ async fn applying_to_an_empty_store_installs_every_declared_server() {
     );
     // Only an enabled server is connected; a disabled one is only recorded.
     assert_eq!(report.connect_queued, [local.server_id.clone()]);
-    let installed_ids: Vec<&str> = report.installed.iter().map(|s| s.server_id.as_str()).collect();
+    let installed_ids: Vec<&str> = report
+        .installed
+        .iter()
+        .map(|s| s.server_id.as_str())
+        .collect();
     assert!(installed_ids.contains(&local.server_id.as_str()));
 }
 

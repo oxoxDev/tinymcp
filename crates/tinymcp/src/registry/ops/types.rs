@@ -809,8 +809,8 @@ fn require_non_empty<'a>(value: &'a str, field: &str) -> Result<&'a str> {
     Ok(trimmed)
 }
 
-/// The current time in Unix epoch milliseconds.
-fn now_ms() -> i64 {
+/// The current time in Unix epoch milliseconds, as install rows record it.
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()
