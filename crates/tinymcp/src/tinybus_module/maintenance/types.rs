@@ -15,6 +15,10 @@ pub(in crate::tinybus_module) enum Pacing {
     /// finishes. The production setting.
     Interval(Duration),
     /// One cycle per message received. The channel closing ends the task.
+    ///
+    /// Compiled for tests only: production is paced by the clock, and a
+    /// variant nothing constructs would be dead code.
+    #[cfg(test)]
     Driven(mpsc::Receiver<()>),
 }
 
@@ -38,6 +42,7 @@ impl Pacing {
                 ticker.tick().await;
                 true
             }
+            #[cfg(test)]
             Self::Driven(cycles) => cycles.recv().await.is_some(),
         }
     }

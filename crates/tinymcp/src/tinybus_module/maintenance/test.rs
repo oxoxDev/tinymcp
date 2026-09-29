@@ -16,7 +16,8 @@ use axum::{Json, Router};
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use super::{Maintenance, Pacing};
+use super::Maintenance;
+use super::types::Pacing;
 use crate::registry::{McpRegistry, Store, SupervisorConfig, SupervisorEvent};
 use tinymcp_bus::{
     CommandKind, InstalledServer, McpClientIdentityConfig, McpRegistryAuthConfig, Transport,

@@ -41,7 +41,9 @@
 
 mod types;
 
-pub(super) use types::{DirectoryOpener, MAX_OPEN_DIRECTORIES};
+pub(super) use types::DirectoryOpener;
+#[cfg(test)]
+pub(super) use types::MAX_OPEN_DIRECTORIES;
 
 #[cfg(test)]
 mod test;

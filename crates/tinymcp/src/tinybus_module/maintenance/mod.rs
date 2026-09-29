@@ -28,7 +28,7 @@
 
 mod types;
 
-pub(super) use types::{Maintenance, Pacing};
+pub(super) use types::Maintenance;
 
 #[cfg(test)]
 mod test;
