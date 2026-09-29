@@ -336,6 +336,8 @@ impl McpRegistry {
         if !enabled {
             self.connections.disconnect(server_id).await;
             self.connections.clear_last_error(server_id).await;
+            // A disabled server's tools stop appearing, cached or not.
+            self.store.forget_cached_tools(server_id)?;
         }
 
         Ok(())
@@ -366,6 +368,9 @@ impl McpRegistry {
         self.store.set_env_values(server_id, &merged)?;
 
         self.connections.disconnect(server_id).await;
+        // New credentials can change what a server offers; the reconnect below
+        // re-caches on success, and a failed one must not leave the old list.
+        self.store.forget_cached_tools(server_id)?;
 
         let mut server = self.store.get_server(server_id)?;
 
@@ -485,6 +490,61 @@ impl McpRegistry {
     /// Every connected server's identity and tools.
     pub async fn connected_overview(&self) -> Vec<ConnectedServerOverview> {
         self.connections.connected_overview().await
+    }
+
+    /// Every enabled install's identity and tools, without dialling anything.
+    ///
+    /// A connected server reports its live list. One that is not connected
+    /// reports what the tool cache holds for its current definition, and one
+    /// with nothing cached is left out. This is what lets a host offer a
+    /// server's tools at boot, before the connect has finished, the same way
+    /// it would once it had.
+    ///
+    /// The result is sorted by qualified name, for the same prompt-stability
+    /// reason as [`Self::connected_overview`]. Being listed here is not
+    /// permission to call: a call still needs a live connection.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] when the installs cannot be listed.
+    pub async fn cached_overview(&self) -> Result<Vec<ConnectedServerOverview>> {
+        let mut live: HashMap<String, ConnectedServerOverview> = self
+            .connections
+            .connected_overview()
+            .await
+            .into_iter()
+            .map(|overview| (overview.server_id.clone(), overview))
+            .collect();
+
+        let mut overviews = Vec::new();
+        for server in self.store.list_servers()? {
+            if !server.enabled {
+                continue;
+            }
+            if let Some(overview) = live.remove(&server.server_id) {
+                overviews.push(overview);
+                continue;
+            }
+            let fingerprint = crate::registry::store::installed_fingerprint(&server);
+            match self.store.cached_tools(&server.server_id, &fingerprint) {
+                Ok(Some(cached)) => overviews.push(ConnectedServerOverview {
+                    server_id: server.server_id,
+                    qualified_name: server.qualified_name,
+                    display_name: server.display_name,
+                    description: server.description,
+                    instructions: None,
+                    tools: cached.tools,
+                }),
+                Ok(None) => {}
+                Err(error) => tracing::debug!(
+                    server_id = %server.server_id,
+                    "skipping an unreadable tool cache row: {error}"
+                ),
+            }
+        }
+
+        overviews.sort_by(|left, right| left.qualified_name.cmp(&right.qualified_name));
+        Ok(overviews)
     }
 
     // -- authorization ------------------------------------------------------

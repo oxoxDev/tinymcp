@@ -71,6 +71,8 @@ pub mod audit;
 pub mod config_servers;
 mod error;
 pub mod registry;
+#[cfg(feature = "tools")]
+pub mod tools;
 #[cfg(all(feature = "module", not(feature = "static-link")))]
 mod tinybus_module;
 #[cfg(feature = "static-link")]
