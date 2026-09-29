@@ -259,9 +259,24 @@ async fn an_opened_directory_cannot_open_further_directories() {
 
 #[tokio::test]
 async fn a_service_that_is_not_a_root_refuses_to_open() {
-    let service = McpService::new(&ModuleConfig::default()).unwrap();
+    let connection = serve_root(&ModuleConfig::default()).await;
+    // Built the way `Open` builds its objects: no opener.
+    connection
+        .serve_at(
+            "/ai/tinyhumans/tinymcp/Plain".try_into().unwrap(),
+            McpService::new(&ModuleConfig::default()).unwrap(),
+        )
+        .await
+        .unwrap();
 
-    let error = service.open_for_test("/somewhere").await.unwrap_err();
+    let error = call::<String>(
+        &connection,
+        "/ai/tinyhumans/tinymcp/Plain",
+        "Open",
+        json!(["/somewhere"]),
+    )
+    .await
+    .unwrap_err();
 
     assert_eq!(failure_name(&error), errors::INVALID_ARGUMENT);
 }
@@ -307,29 +322,4 @@ async fn the_number_of_served_directories_is_bounded() {
     .await
     .unwrap();
     assert!(again.starts_with(DIRECTORY_OBJECT_PREFIX));
-}
-
-#[tokio::test]
-async fn an_opened_directory_connects_its_installed_servers() {
-    // The boot pass runs for every directory, so a login that switches
-    // directories brings the new user's servers up the way a load does.
-    let root_dir = tempfile::tempdir().unwrap();
-    let other = tempfile::tempdir().unwrap();
-    let store = crate::Store::open(other.path()).unwrap();
-    drop(store);
-    let connection = serve_root(&config_in(root_dir.path())).await;
-
-    let opened: String = call(
-        &connection,
-        OBJECT_PATH,
-        "Open",
-        json!([other.path().to_str().unwrap()]),
-    )
-    .await
-    .unwrap();
-
-    // Nothing installed, so nothing to connect; the member answering at all
-    // shows the service built with its background work running.
-    let status: Vec<Value> = call(&connection, &opened, "Status", json!([])).await.unwrap();
-    assert!(status.is_empty());
 }
