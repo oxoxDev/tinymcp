@@ -85,12 +85,12 @@ pub use config_servers::{
 };
 pub use error::{Error, Result};
 pub use registry::{
-    AuthDetection, AuthKind, Connections, McpRegistry, OAuthFlow, ProbeOutcome,
+    Connections, McpRegistry, OAuthFlow, ProbeOutcome,
     REMOTE_REQUEST_TIMEOUT, SecretRef, SecretVault, ServerRef, Store, Supervisor, SupervisorConfig,
     SupervisorEvent, TickReport,
 };
 #[cfg(feature = "module")]
-pub use tinybus_module::{McpService, ModuleConfig, ServerDetail};
+pub use tinybus_module::{McpService, ModuleConfig};
 pub use transport::http::{McpHttpClient, McpHttpClientBuilder};
 pub use transport::stdio::McpStdioClient;
 pub use transport::{redact_endpoint, render_tool_result};
@@ -101,7 +101,7 @@ pub use transport::{redact_endpoint, render_tool_result};
 // types; nothing here redefines them.
 pub use tinymcp_bus;
 pub use tinymcp_bus::{
-    AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind, ConnStatus,
+    AuthDetection, AuthKind, AuthorizationServerMetadata, CONTRACT_VERSION, ChatTurn, CommandKind, ConnStatus,
     ConnectedServerOverview, DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, ExtraFields, HttpHeader,
     INTERFACE, InstalledServer, LATEST_PROTOCOL_VERSION, MAX_DESCRIPTION_BYTES, MAX_LIST_LIMIT,
     MAX_TITLE_BYTES, METHODS, McpAuthChallenge, McpAuthConfig, McpAuthHint,
@@ -110,6 +110,6 @@ pub use tinymcp_bus::{
     McpServerToolResult, McpSseEvent, McpTool, McpToolContent, McpToolResult, McpWriteListQuery,
     McpWriteRecord, NewMcpWriteRecord, OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection,
     RegistryListResponse, RegistryPagination, RegistryServerDetail, RegistryServerSummary,
-    SUPPORTED_PROTOCOL_VERSIONS, ServerStatus, Transport, config, is_compatible, names, sanitize,
+    SUPPORTED_PROTOCOL_VERSIONS, SearchCuration, ServerDetail, ServerStatus, Transport, config, is_compatible, names, sanitize,
     version,
 };
