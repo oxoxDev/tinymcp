@@ -28,9 +28,7 @@ pub fn tool_parameters(input_schema: &Value) -> Value {
     }
     sanitize_schema_text(&mut schema);
     let exceeds_limit = serde_json::to_vec(&schema)
-        .map_or(true, |serialized| {
-            serialized.len() > MAX_LLM_BLOCK_BYTES
-        });
+        .map_or(true, |serialized| serialized.len() > MAX_LLM_BLOCK_BYTES);
     if exceeds_limit {
         json!({ "type": "object", "properties": {} })
     } else {
