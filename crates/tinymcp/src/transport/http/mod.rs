@@ -822,20 +822,18 @@ impl McpHttpClient {
             .fetch_json::<AuthorizationServerMetadata>(&oauth_url)
             .await;
         match oauth {
-            Ok(metadata)
-                if metadata_matches_issuer(&metadata, issuer) && has_every_endpoint(&metadata) =>
-            {
-                Ok(metadata)
-            }
-            Ok(metadata) if !metadata_matches_issuer(&metadata, issuer) => {
-                tracing::debug!(issuer = %redact_endpoint(issuer_url), "[mcp] rfc 8414 issuer did not match, trying oidc discovery");
-                let oidc = self
-                    .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
-                    .await?;
-                validate_metadata_issuer(&oidc, issuer)?;
-                Ok(oidc)
-            }
             Ok(metadata) => {
+                if validate_metadata_issuer(&metadata, issuer).is_err() {
+                    tracing::debug!(issuer = %redact_endpoint(issuer_url), "[mcp] rfc 8414 issuer did not match, trying oidc discovery");
+                    let oidc = self
+                        .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
+                        .await?;
+                    validate_metadata_issuer(&oidc, issuer)?;
+                    return Ok(oidc);
+                }
+                if has_every_endpoint(&metadata) {
+                    return Ok(metadata);
+                }
                 match self
                     .fetch_json::<AuthorizationServerMetadata>(&oidc_url)
                     .await
