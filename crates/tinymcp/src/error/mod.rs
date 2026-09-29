@@ -263,6 +263,27 @@ pub enum Error {
         #[source]
         source: Box<std::io::Error>,
     },
+
+    /// Serving MCP failed to read a request or write a response.
+    ///
+    /// On stdio this is almost always the client going away: its end of the
+    /// pipe closed mid-conversation.
+    #[error("mcp server i/o failure: {source}")]
+    ServerIo {
+        /// What the stream reported.
+        #[source]
+        source: Box<std::io::Error>,
+    },
+
+    /// The MCP server could not listen on its address.
+    #[error("could not bind the mcp server on `{addr}`: {source}")]
+    ServerBind {
+        /// The address it tried to bind.
+        addr: std::net::SocketAddr,
+        /// What the operating system reported.
+        #[source]
+        source: Box<std::io::Error>,
+    },
 }
 
 impl Error {
