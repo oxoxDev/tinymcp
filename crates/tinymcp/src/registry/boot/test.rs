@@ -312,7 +312,7 @@ async fn disabling_an_install_during_boot_does_not_publish_its_connection() {
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
-    let store = Store::open_in_memory().unwrap();
+    let store = Arc::new(Store::open_in_memory().unwrap());
     store
         .insert_server(&install(
             "srv-racing",
@@ -322,10 +322,10 @@ async fn disabling_an_install_during_boot_does_not_publish_its_connection() {
             true,
         ))
         .unwrap();
-    let connections = Connections::new();
+    let connections = Arc::new(Connections::new());
     let boot_task = tokio::spawn({
-        let store = store.clone();
-        let connections = connections.clone();
+        let store = Arc::clone(&store);
+        let connections = Arc::clone(&connections);
         async move { boot(&store, &connections).await }
     });
 
