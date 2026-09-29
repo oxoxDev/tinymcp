@@ -104,11 +104,11 @@ impl McpService {
         connection: Connection,
         config: &ModuleConfig,
         supervisor: SupervisorConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         self.opener = Some(Arc::new(DirectoryOpener::new(
             connection, config, supervisor,
-        )));
-        self
+        )?));
+        Ok(self)
     }
 
     /// Waits for the boot connect pass to finish, when maintenance was started.

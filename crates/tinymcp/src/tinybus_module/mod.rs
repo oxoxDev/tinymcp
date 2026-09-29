@@ -51,7 +51,8 @@ pub(super) async fn setup(connection: Connection, config: ModuleConfig) -> TinyB
         .map_err(|error| tinybus::Error::failed(format!("tinymcp could not start: {error}")))?
         .with_maintenance(supervisor.clone())
         .await
-        .with_opener(connection.clone(), &config, supervisor);
+        .with_opener(connection.clone(), &config, supervisor)
+        .map_err(|error| tinybus::Error::failed(format!("tinymcp could not start: {error}")))?;
 
     connection
         .serve_at(names::OBJECT_PATH.try_into()?, service)

@@ -52,18 +52,22 @@ impl DirectoryOpener {
         connection: Connection,
         config: &ModuleConfig,
         supervisor: SupervisorConfig,
-    ) -> Self {
+    ) -> Result<Self> {
         let mut served = HashMap::new();
         if let Some(dir) = &config.data_dir {
-            served.insert(dir.clone(), OBJECT_PATH.to_string());
+            let absolute = std::path::absolute(dir).map_err(|source| Error::StoreIo {
+                path: dir.clone(),
+                source: Box::new(source),
+            })?;
+            served.insert(absolute, OBJECT_PATH.to_string());
         }
 
-        Self {
+        Ok(Self {
             connection,
             client: config.client.clone(),
             supervisor,
             served: tokio::sync::Mutex::new(served),
-        }
+        })
     }
 
     /// Serves `data_dir` as its own object and returns the object path.
