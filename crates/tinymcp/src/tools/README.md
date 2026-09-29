@@ -7,10 +7,11 @@ values. `tools_for` builds one model-facing tool per usable server tool;
 ## Names and declarations
 
 Names are provider-safe and stable across process restarts. When server labels
-would produce the same name, both tools receive a suffix derived from their
-server identity so adding or removing another source cannot rebind a recorded
-tool name. `tool_parameters` sanitizes remote descriptions and titles and
-ensures the root schema declares an object.
+include a suffix derived from their server identity so adding or removing
+another source cannot rebind a recorded tool name. `tool_parameters` sanitizes
+remote descriptions and titles, ensures the root schema declares an object,
+and replaces schemas over the model-facing size limit with an empty object
+schema.
 
 ## Exposure and execution
 
