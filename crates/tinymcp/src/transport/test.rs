@@ -55,3 +55,25 @@ fn a_near_miss_version_is_rejected() {
         );
     }
 }
+
+#[test]
+fn endpoint_redaction_drops_sensitive_url_parts() {
+    assert_eq!(
+        super::redact_endpoint("https://example.test/mcp?key=secret"),
+        "https://example.test"
+    );
+    assert_eq!(
+        super::redact_endpoint("https://user:pass@example.test"),
+        "<redacted>"
+    );
+}
+
+#[test]
+fn tool_results_render_text_and_error_status() {
+    let result = super::render_tool_result(&serde_json::json!({
+        "isError": true,
+        "content": [{"type": "text", "text": "invalid"}],
+    }));
+    assert!(result.is_error);
+    assert_eq!(result.text(), "invalid");
+}
