@@ -802,6 +802,50 @@ async fn mismatched_rfc8414_and_oidc_issuers_are_rejected() {
 }
 
 #[tokio::test]
+async fn matching_oidc_metadata_replaces_mismatched_rfc8414_metadata() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    let issuer = format!("{base}/tenant");
+    let oauth_issuer = format!("{base}/other");
+    let oidc_issuer = issuer.clone();
+    let app = Router::new()
+        .route(
+            "/.well-known/oauth-authorization-server/tenant",
+            get(move || {
+                let issuer = oauth_issuer.clone();
+                async move { Json(json!({ "issuer": issuer })) }
+            }),
+        )
+        .route(
+            "/tenant/.well-known/openid-configuration",
+            get(move || {
+                let issuer = oidc_issuer.clone();
+                async move {
+                    Json(json!({
+                        "issuer": issuer,
+                        "authorization_endpoint": "https://login.example/authorize",
+                    }))
+                }
+            }),
+        );
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+    let client = McpHttpClient::new(format!("{base}/"), 2).unwrap();
+
+    let metadata = client
+        .fetch_authorization_server_metadata(&issuer)
+        .await
+        .unwrap();
+
+    assert_eq!(metadata.issuer, issuer);
+    assert_eq!(
+        metadata.authorization_endpoint.as_deref(),
+        Some("https://login.example/authorize")
+    );
+}
+
+#[tokio::test]
 async fn a_401_advertising_resource_metadata_is_flagged_as_oauth() {
     // This is what separates "sign in" from "paste a token" for a caller.
     let endpoint = spawn_discovery_server().await;
