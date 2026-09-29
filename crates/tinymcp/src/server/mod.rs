@@ -11,10 +11,12 @@ pub mod args;
 mod fixture;
 mod protocol;
 mod session;
+mod stdio;
 mod types;
 
 pub use protocol::{handle_line, handle_value};
 pub use session::ClientSession;
+pub use stdio::run_stdio;
 pub use types::{
     DEFAULT_SOURCE_TYPE_PREFIX, McpServerHandler, RequestContext, RequestHeaders, ResourceSpec,
     ServerInfo, ServerToolSpec, ToolCallError,
