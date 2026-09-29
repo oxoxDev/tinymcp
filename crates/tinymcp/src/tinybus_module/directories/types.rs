@@ -70,8 +70,9 @@ impl DirectoryOpener {
     /// # Errors
     ///
     /// Returns [`Error::InvalidArgument`] when the path is empty, relative, or
-    /// the module already serves [`MAX_OPEN_DIRECTORIES`] directories, plus
-    /// whatever building the service returns. A failed open leaves nothing
+    /// the module already serves [`MAX_OPEN_DIRECTORIES`] directories,
+    /// [`Error::Bus`] when the object cannot be served, plus whatever building
+    /// the service returns. A failed open leaves nothing
     /// recorded, so it is retried rather than answered with a dead path.
     pub(in crate::tinybus_module) async fn open(&self, data_dir: &str) -> Result<String> {
         let dir = Path::new(data_dir);
@@ -104,14 +105,14 @@ impl DirectoryOpener {
         // user data and object-path elements are not. The map never shrinks,
         // so its length is never reused.
         let path = format!("{DIRECTORY_OBJECT_PREFIX}/d{}", served.len());
-        let object_path = path.as_str().try_into().map_err(|error| {
-            Error::invalid_argument(format!("could not name an object for the directory: {error}"))
+        let object_path = path.as_str().try_into().map_err(|error| Error::Bus {
+            detail: format!("could not name an object for the directory: {error}"),
         })?;
         self.connection
             .serve_at(object_path, service)
             .await
-            .map_err(|error| {
-                Error::invalid_argument(format!("could not serve the directory: {error}"))
+            .map_err(|error| Error::Bus {
+                detail: format!("could not serve the directory: {error}"),
             })?;
 
         served.insert(dir.to_path_buf(), path.clone());

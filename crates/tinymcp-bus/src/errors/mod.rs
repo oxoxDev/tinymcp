@@ -69,6 +69,9 @@ pub const SERIALIZATION: &str = "ai.tinyhumans.tinymcp.Error.Serialization";
 pub const STORE: &str = "ai.tinyhumans.tinymcp.Error.Store";
 /// The store's directory or file could not be reached.
 pub const STORE_IO: &str = "ai.tinyhumans.tinymcp.Error.StoreIo";
+/// The module could not do something it needed of the bus, such as serving a
+/// new object.
+pub const BUS: &str = "ai.tinyhumans.tinymcp.Error.Bus";
 /// An argument was well-formed on the wire but unusable, such as a data
 /// directory that is not an absolute path.
 pub const INVALID_ARGUMENT: &str = "ai.tinyhumans.tinymcp.Error.InvalidArgument";
@@ -92,6 +95,7 @@ pub const ALL: &[&str] = &[
     SERIALIZATION,
     STORE,
     STORE_IO,
+    BUS,
     INVALID_ARGUMENT,
 ];
 

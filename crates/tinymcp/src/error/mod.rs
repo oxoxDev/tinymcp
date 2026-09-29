@@ -238,6 +238,16 @@ pub enum Error {
         source: Box<std::io::Error>,
     },
 
+    /// The bus refused something the module asked of it.
+    ///
+    /// Reported as prose because `tinybus`'s own error type is only available to
+    /// the adapter, and this crate is usable without linking a bus.
+    #[error("bus failure: {detail}")]
+    Bus {
+        /// What the bus reported.
+        detail: String,
+    },
+
     /// An argument decoded but cannot be used.
     ///
     /// The detail describes the rule, never the value: a rejected data
@@ -329,6 +339,7 @@ impl Error {
             Self::Serialization { .. } => errors::SERIALIZATION,
             Self::Store { .. } => errors::STORE,
             Self::StoreIo { .. } => errors::STORE_IO,
+            Self::Bus { .. } => errors::BUS,
             Self::InvalidArgument { .. } => errors::INVALID_ARGUMENT,
         }
     }
