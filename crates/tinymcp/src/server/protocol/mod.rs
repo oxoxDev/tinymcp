@@ -22,7 +22,6 @@
 use serde_json::{Map, Value, json};
 use tinymcp_bus::{LATEST_PROTOCOL_VERSION, SUPPORTED_PROTOCOL_VERSIONS};
 
-use super::session::object_keys;
 use super::types::{INVALID_PARAMS, INVALID_REQUEST, METHOD_NOT_FOUND, PARSE_ERROR};
 use super::{ClientSession, McpServerHandler, RequestContext, RequestHeaders, ServerInfo};
 
@@ -284,7 +283,7 @@ async fn call_tool(
         request_id,
         name,
         ctx.source_type(),
-        object_keys(&Value::Object(arguments.clone()))
+        sorted_keys(&arguments)
     );
     match handler.call_tool(ctx, &name, arguments).await {
         Ok(result) => {
@@ -371,6 +370,12 @@ fn parse_tool_call_params(params: Value) -> Result<(String, Map<String, Value>),
     let arguments = tinymcp_bus::normalize_tool_arguments(object.get("arguments").cloned())
         .map_err(|error| format!("tools/call params.arguments: {error}"))?;
     Ok((name.to_string(), arguments))
+}
+
+fn sorted_keys(object: &Map<String, Value>) -> Vec<&str> {
+    let mut keys = object.keys().map(String::as_str).collect::<Vec<_>>();
+    keys.sort_unstable();
+    keys
 }
 
 fn success_response(id: Value, result: Value) -> Value {
