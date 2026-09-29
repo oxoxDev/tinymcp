@@ -96,6 +96,32 @@ fn mismatched_metadata_issuers_are_not_merged() {
     );
 }
 
+#[test]
+fn metadata_merge_preserves_rfc_default_for_omitted_grant_types() {
+    let primary = AuthorizationServerMetadata {
+        issuer: "https://example.com".into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: Vec::new(),
+        code_challenge_methods_supported: Vec::new(),
+    };
+    let secondary = AuthorizationServerMetadata {
+        issuer: "https://example.com".into(),
+        authorization_endpoint: None,
+        token_endpoint: None,
+        registration_endpoint: None,
+        response_types_supported: Vec::new(),
+        grant_types_supported: vec!["client_credentials".into()],
+        code_challenge_methods_supported: Vec::new(),
+    };
+
+    let merged = fill_missing_metadata(primary, secondary);
+
+    assert!(merged.grant_types_supported.is_empty());
+}
+
 // ---------------------------------------------------------------------------
 // Test server
 // ---------------------------------------------------------------------------

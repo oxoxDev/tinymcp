@@ -1033,9 +1033,6 @@ fn fill_missing_metadata(
     if primary.response_types_supported.is_empty() {
         primary.response_types_supported = secondary.response_types_supported;
     }
-    if primary.grant_types_supported.is_empty() {
-        primary.grant_types_supported = secondary.grant_types_supported;
-    }
     if primary.code_challenge_methods_supported.is_empty() {
         primary.code_challenge_methods_supported = secondary.code_challenge_methods_supported;
     }
