@@ -520,8 +520,11 @@ fn any_other_write_failure_says_what_was_being_attempted() {
 #[tokio::test]
 async fn a_bare_name_resolved_through_pathext_reaches_its_spawn() {
     let dir = tempfile::tempdir().expect("a temp dir");
-    std::fs::write(dir.path().join("probe-tool.cmd"), "@ECHO OFF\r\nEXIT /B 0\r\n")
-        .expect("write the shim");
+    std::fs::write(
+        dir.path().join("probe-tool.cmd"),
+        "@ECHO OFF\r\nEXIT /B 0\r\n",
+    )
+    .expect("write the shim");
 
     let client = client_for(
         "probe-tool",
