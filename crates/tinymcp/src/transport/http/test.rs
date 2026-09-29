@@ -24,9 +24,7 @@ use serde_json::{Value, json};
 
 use super::headers::parse_www_authenticate_challenge;
 use super::sse::{first_complete_sse_data, parse_sse_events};
-use super::{
-    HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient, rfc8414_metadata_url,
-};
+use super::{HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient, rfc8414_metadata_url};
 use crate::Error;
 use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig};
 

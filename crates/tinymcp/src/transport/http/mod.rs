@@ -952,8 +952,9 @@ impl McpHttpClient {
 }
 
 fn rfc8414_metadata_url(issuer: &str) -> Result<String> {
-    let mut url = Url::parse(issuer)
-        .map_err(|error| Error::malformed(format!("invalid authorization server issuer: {error}")))?;
+    let mut url = Url::parse(issuer).map_err(|error| {
+        Error::malformed(format!("invalid authorization server issuer: {error}"))
+    })?;
     let path = url.path().trim_end_matches('/');
     url.set_path(&format!("/.well-known/oauth-authorization-server{path}"));
     url.set_query(None);
