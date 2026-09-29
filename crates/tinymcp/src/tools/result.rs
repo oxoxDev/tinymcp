@@ -28,15 +28,19 @@ pub fn tool_result(result: McpToolResult) -> ToolResult {
                 McpToolContent::Json { data } => ToolContent::Json { data },
                 // The contract's block enum is `#[non_exhaustive]`: a kind this
                 // build does not model travels as its JSON, bounded.
-                #[allow(unreachable_patterns)]
-                other => ToolContent::Json {
-                    data: elide_oversized_block(&other),
-                },
+                other => passthrough(&other),
             })
             .collect(),
         is_error: result.is_error,
         markdown_formatted: result.markdown_formatted,
         ..ToolResult::default()
+    }
+}
+
+/// An unrecognized block, carried as bounded JSON.
+pub(crate) fn passthrough(block: &McpToolContent) -> ToolContent {
+    ToolContent::Json {
+        data: elide_oversized_block(block),
     }
 }
 

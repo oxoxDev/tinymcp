@@ -526,7 +526,9 @@ fn an_oversized_unmodelled_block_is_elided_but_keeps_its_type() {
     let big = McpToolContent::Json {
         data: json!("x".repeat(super::MAX_LLM_BLOCK_BYTES + 1)),
     };
-    let elided = super::result::elide_oversized_block(&big);
+    let tinytools::ToolContent::Json { data: elided } = super::result::passthrough(&big) else {
+        panic!("a passthrough block is JSON");
+    };
     assert_eq!(elided["type"], serde_json::to_value(&big).unwrap()["type"]);
     assert!(elided["data"].as_str().unwrap().ends_with("bytes elided]"));
 }
