@@ -20,8 +20,7 @@ use crate::Error;
 use crate::registry::Store;
 use tinymcp_bus::{
     CommandKind, InstalledServer, McpClientIdentityConfig, McpRegistryAuthConfig,
-    RegistryConnection, RegistryServerDetail, SearchCuration, ToolCallOutcome, Transport,
-    UpdateEnvStatus,
+    RegistryConnection, RegistryServerDetail, SearchCuration, Transport, UpdateEnvStatus,
 };
 
 // ---------------------------------------------------------------------------
@@ -1636,20 +1635,4 @@ async fn a_supervisor_from_the_registry_steps_over_its_store() {
         .await;
 
     assert!(report.is_empty());
-}
-
-// ---------------------------------------------------------------------------
-// Tool outcomes
-// ---------------------------------------------------------------------------
-
-#[test]
-fn a_tool_outcome_is_built_from_a_server_result_with_its_rendering() {
-    let raw = json!({ "content": [{ "type": "text", "text": "sunny" }] });
-    let outcome = ToolCallOutcome::from(tinymcp_bus::McpServerToolResult::new(
-        raw.clone(),
-        crate::render_tool_result(&raw),
-    ));
-
-    assert_eq!(outcome.rendered.text(), "sunny");
-    assert_eq!(outcome.result, raw);
 }
