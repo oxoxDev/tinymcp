@@ -8,9 +8,10 @@
 //! and on every launch, because a resumed conversation replays the names it
 //! recorded.
 //!
-//! Readability gives way only when it has to. A name that would run past the
-//! limit keeps as much of both parts as fits and ends in a short digest of the
-//! untruncated pair, so two long names that share a prefix stay distinct.
+//! Generated names include a short digest of the server identity and tool
+//! name. That keeps a recorded name stable if another server with the same
+//! readable slug is added or removed. A name that would run past the limit
+//! keeps as much of both readable parts as fits before the digest.
 
 use sha2::{Digest as _, Sha256};
 
@@ -110,11 +111,10 @@ pub fn tool_name(server_label: &str, tool: &str) -> String {
     with_suffix(&server, &tool_part, &digest(&[server_label, tool]))
 }
 
-/// A name for `tool` that cannot collide with [`tool_name`]'s choice for any
-/// other server: the readable form plus a digest of the server's identity.
+/// A name for `tool` that includes a digest of the server's identity.
 ///
-/// For the rare case where two servers slug to the same name and both offer a
-/// tool of the same name.
+/// Use this for generated tool registrations so adding another server with the
+/// same readable slug cannot change an existing tool's name.
 #[must_use]
 pub fn disambiguated_tool_name(server_id: &str, server_label: &str, tool: &str) -> String {
     let server = server_slug(server_label);
