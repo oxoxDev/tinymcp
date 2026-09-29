@@ -815,20 +815,7 @@ impl McpHttpClient {
         issuer: &str,
     ) -> Result<AuthorizationServerMetadata> {
         let trimmed = issuer.trim_end_matches('/');
-        let parsed_issuer = Url::parse(trimmed).map_err(|error| {
-            Error::malformed(format!("invalid authorization server issuer: {error}"))
-        })?;
-        let issuer_path = parsed_issuer.path().trim_end_matches('/');
-        let oauth_url = format!(
-            "{}://{}{}{}{}",
-            parsed_issuer.scheme(),
-            parsed_issuer.host_str().unwrap_or_default(),
-            parsed_issuer
-                .port()
-                .map_or(String::new(), |port| format!(":{port}")),
-            "/.well-known/oauth-authorization-server",
-            issuer_path
-        );
+        let oauth_url = rfc8414_metadata_url(trimmed)?;
         let oidc_url = format!("{trimmed}/.well-known/openid-configuration");
 
         let oauth = self
@@ -962,6 +949,16 @@ impl McpHttpClient {
         // never followed by a blank line.
         parse_sse_message(&String::from_utf8_lossy(&raw))
     }
+}
+
+fn rfc8414_metadata_url(issuer: &str) -> Result<String> {
+    let mut url = Url::parse(issuer)
+        .map_err(|error| Error::malformed(format!("invalid authorization server issuer: {error}")))?;
+    let path = url.path().trim_end_matches('/');
+    url.set_path(&format!("/.well-known/oauth-authorization-server{path}"));
+    url.set_query(None);
+    url.set_fragment(None);
+    Ok(url.into())
 }
 
 fn metadata_matches_issuer(metadata: &AuthorizationServerMetadata, issuer: &str) -> bool {

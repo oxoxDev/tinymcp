@@ -24,9 +24,19 @@ use serde_json::{Value, json};
 
 use super::headers::parse_www_authenticate_challenge;
 use super::sse::{first_complete_sse_data, parse_sse_events};
-use super::{HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient};
+use super::{
+    HEADER_PROTOCOL_VERSION, HEADER_SESSION_ID, McpHttpClient, rfc8414_metadata_url,
+};
 use crate::Error;
 use tinymcp_bus::{HttpHeader, LATEST_PROTOCOL_VERSION, McpAuthConfig};
+
+#[test]
+fn rfc8414_metadata_url_places_issuer_path_after_well_known_segment() {
+    assert_eq!(
+        rfc8414_metadata_url("https://example.com/tenant").unwrap(),
+        "https://example.com/.well-known/oauth-authorization-server/tenant"
+    );
+}
 
 // ---------------------------------------------------------------------------
 // Test server
