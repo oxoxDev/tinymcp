@@ -21,7 +21,10 @@ use tinytools::{PermissionLevel, Tool, ToolExposure};
 use super::naming::{
     MAX_TOOL_NAME_LEN, disambiguated_tool_name, legacy_tool_name, server_slug, slug, tool_name,
 };
-use super::{McpExposure, McpServerTool, McpToolInvoker, McpToolSource, tool_result, tools_for};
+use super::{
+    McpExposure, McpServerTool, McpToolInvoker, McpToolSource, tool_parameters, tool_result,
+    tools_for,
+};
 use crate::registry::Store;
 use crate::{McpRegistry, McpServerRegistry};
 
@@ -315,6 +318,14 @@ fn a_tool_declares_a_remote_effectful_call_grouped_by_server() {
     assert!(!schema.to_string().contains("<|im_end|>"));
     assert_eq!(tool.legacy_name(), legacy_tool_name("id-1", "readGoals"));
     assert_eq!(tool.clone().renamed("old").name(), "old");
+}
+
+#[test]
+fn a_malformed_root_schema_type_is_replaced_with_object() {
+    for invalid_type in [json!("string"), Value::Null, json!(["object", "null"])] {
+        let schema = tool_parameters(&json!({ "type": invalid_type, "properties": {} }));
+        assert_eq!(schema["type"], "object");
+    }
 }
 
 #[test]
