@@ -202,10 +202,11 @@ a download, a `dlopen`, and a resident library that TinyBus will never unload.
 - No file under `src/openhuman/` names `reqwest` for MCP purposes after step
   two, and the `mcp` Cargo feature is gone.
 
-## Contract 1.1: closing the gaps a host hit (issue #4)
+## Contract 1.2: closing the gaps a host hit (issue #4)
 
-Contract 1.0 was not enough for a host to drop its path dependency. Contract
-1.1 is additive: no member, field, or wire form changed.
+Contract 1.1 added the agent-tools family. Contract 1.2 adds the members and
+payloads below; all additions are backward-compatible for hosts that do not
+call the new members.
 
 - **`OAuthComplete(state, code)`** finishes an authorization. The module
   resolves `state` to a server through its own pending-authorization map, so a

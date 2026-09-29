@@ -9,8 +9,8 @@
 
 /// The wire contract version this crate defines.
 ///
-/// 1.1 added the [`crate::agent_tools`] family.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 1);
+/// 1.1 added agent tools; 1.2 added registry and directory members.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 2);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.

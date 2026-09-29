@@ -67,7 +67,7 @@ pub struct ToolCallOutcome {
     ///
     /// Present so a host need not re-implement the protocol's content-block
     /// encoding to show or feed a result onward. Defaults to an empty result
-    /// when absent, which is what a module older than contract 1.1 sends.
+    /// when absent, which is what a module older than contract 1.2 sends.
     #[serde(default)]
     pub rendered: McpToolResult,
 }

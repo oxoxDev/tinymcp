@@ -2,6 +2,7 @@
 
 use futures_util::StreamExt as _;
 
+use crate::error::Error;
 use crate::registry::{Connections, OAuthFlow, Store};
 use tinymcp_bus::{McpClientIdentityConfig, McpProxyConfig};
 
@@ -72,11 +73,13 @@ pub async fn connect_installed_servers(
     // concurrent stream does not have to buffer one entry per server.
     let connected = std::sync::atomic::AtomicUsize::new(0);
     let failed = std::sync::atomic::AtomicUsize::new(0);
+    let skipped_count = std::sync::atomic::AtomicUsize::new(skipped.len());
 
     futures_util::stream::iter(enabled)
         .for_each_concurrent(BOOT_CONCURRENCY, |server| {
             let connected = &connected;
             let failed = &failed;
+            let skipped_count = &skipped_count;
             async move {
                 match connections
                     .connect(store, oauth, identity, proxy, &server)
@@ -90,6 +93,9 @@ pub async fn connect_installed_servers(
                             tools = tools.len(),
                             "connected at startup"
                         );
+                    }
+                    Err(Error::ServerDisabled { .. }) => {
+                        skipped_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     }
                     Err(error) => {
                         failed.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
@@ -107,6 +113,6 @@ pub async fn connect_installed_servers(
     BootOutcome {
         connected: connected.into_inner(),
         failed: failed.into_inner(),
-        skipped: skipped.len(),
+        skipped: skipped_count.into_inner(),
     }
 }
