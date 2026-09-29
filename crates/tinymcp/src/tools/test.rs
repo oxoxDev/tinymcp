@@ -536,6 +536,13 @@ fn a_tool_one_server_lists_twice_is_built_once() {
 }
 
 #[test]
+fn repeated_sources_do_not_register_the_same_tool_twice() {
+    let source = McpToolSource::from_overview(&overview("same", "srv", &["read"]));
+    let tools = tools_for(&[source.clone(), source], &unreachable());
+    assert_eq!(tools.len(), 1);
+}
+
+#[test]
 fn a_blank_display_name_falls_back_to_the_family() {
     let mut server = overview("a", "@acme/notes", &["list"]);
     server.display_name = "  ".into();
