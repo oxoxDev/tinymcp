@@ -176,6 +176,15 @@ Enable the `tools` feature to expose each server tool as a
   host can offer every tool at boot.
 - **Calls** go through an `McpToolInvoker`. Both registries implement it; a
   host wraps one with its own approvals, audit and screening.
+- **The generic bridge** is three tools over one configured-server registry:
+  `McpListServersTool`, `McpListToolsTool` and `McpCallTool`
+  (`mcp_list_servers`, `mcp_list_tools`, `mcp_call_tool`). `McpCallTool` asks a
+  host-supplied `ActGate` before it sends anything.
+- **`SecretScrubber`** removes a server's own credentials (tokens, basic-auth
+  pairs, header and query values, URL userinfo) from whatever it echoes back;
+  every bridge tool applies it, and a host wraps its own invokers with it.
+- **`tool_result`** maps a rendered MCP result onto `tinytools::ToolResult`,
+  bounding oversized blocks.
 
 `tinytools` is a git dependency so a host that links another checkout of it can
 `[patch]` the two into one package.
