@@ -50,6 +50,10 @@ tokio-stream = { workspace = true, optional = true }
 tinytools = { workspace = true, optional = true }
 async-trait = { workspace = true, optional = true }
 anyhow = { workspace = true, optional = true }
+# `SecretScrubber` (the `tools` feature) parses endpoints for userinfo and
+# credential-looking query values, and matches their percent-encoded spellings.
+url = { workspace = true, optional = true }
+urlencoding = { workspace = true, optional = true }
 
 [[example]]
 name = "verify_module"
@@ -92,7 +96,7 @@ server-http = ["dep:axum", "dep:tokio-stream", "tokio/net"]
 # `mcp_<server>_<tool>` names, sanitized descriptions and schemas, direct or
 # deferred exposure, and an invoker seam a host wraps with its own policy.
 # Off by default so the loadable module does not link the tool vocabulary.
-tools = ["dep:tinytools", "dep:async-trait", "dep:anyhow"]
+tools = ["dep:tinytools", "dep:async-trait", "dep:anyhow", "dep:url", "dep:urlencoding"]
 
 [lints]
 workspace = true

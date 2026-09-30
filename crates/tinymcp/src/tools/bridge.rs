@@ -222,10 +222,17 @@ impl Tool for McpListToolsTool {
 }
 
 /// Calls one tool on one configured server, behind the host's [`ActGate`].
-#[derive(Debug)]
 pub struct McpCallTool {
     registry: Arc<McpServerRegistry>,
     act_gate: ActGate,
+}
+
+impl std::fmt::Debug for McpCallTool {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpCallTool")
+            .field("registry", &self.registry)
+            .finish_non_exhaustive()
+    }
 }
 
 impl McpCallTool {
