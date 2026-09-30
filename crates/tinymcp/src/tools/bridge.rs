@@ -30,7 +30,6 @@ use crate::config_servers::{McpRegistrySource, McpServerRegistry};
 /// refuses the call and is returned as the tool's error.
 pub type ActGate = Arc<dyn Fn(&str) -> anyhow::Result<()> + Send + Sync>;
 
-
 /// Lists the configured servers, without their credentials.
 #[derive(Debug)]
 pub struct McpListServersTool {
@@ -38,6 +37,7 @@ pub struct McpListServersTool {
 }
 
 impl McpListServersTool {
+    /// A tool over `registry`.
     #[must_use]
     pub fn new(registry: Arc<McpServerRegistry>) -> Self {
         Self { registry }
@@ -138,6 +138,7 @@ pub struct McpListToolsTool {
 }
 
 impl McpListToolsTool {
+    /// A tool over `registry`.
     #[must_use]
     pub fn new(registry: Arc<McpServerRegistry>) -> Self {
         Self { registry }
@@ -184,7 +185,7 @@ impl Tool for McpListToolsTool {
             Err(err) => {
                 return Ok(ToolResult::error(
                     scrubber.scrub(&format!("mcp_list_tools failed: {err}")),
-                ))
+                ));
             }
         };
 
@@ -239,6 +240,7 @@ impl std::fmt::Debug for McpCallTool {
 }
 
 impl McpCallTool {
+    /// A tool over `registry` that asks `act_gate` before each call.
     #[must_use]
     pub fn new(registry: Arc<McpServerRegistry>, act_gate: ActGate) -> Self {
         Self { registry, act_gate }
@@ -311,7 +313,7 @@ impl Tool for McpCallTool {
             Err(err) => {
                 return Ok(ToolResult::error(
                     scrubber.scrub(&format!("mcp_call_tool failed: {err}")),
-                ))
+                ));
             }
         };
 

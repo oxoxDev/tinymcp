@@ -73,15 +73,18 @@ impl SecretScrubber {
                         .encode(format!("{username}:{password}")),
                 );
             }
-            McpAuthConfig::Header { value, .. } => raw.push(value.clone()),
+            McpAuthConfig::Header { value, .. } | McpAuthConfig::QueryParam { value, .. } => {
+                raw.push(value.clone());
+            }
             McpAuthConfig::Headers { headers } => {
                 raw.extend(headers.iter().map(|header| header.value.clone()));
             }
-            McpAuthConfig::QueryParam { value, .. } => raw.push(value.clone()),
             _ => {}
         }
-        if endpoint_query(endpoint).is_some() {
-            if let Ok(url) = url::Url::parse(endpoint) {
+        if endpoint_query(endpoint).is_some()
+            && let Ok(url) = url::Url::parse(endpoint)
+        {
+            {
                 strict.extend(url.query_pairs().filter_map(|(name, value)| {
                     let name = name.to_ascii_lowercase();
                     let credential_like = CREDENTIAL_QUERY_PARAM_NEEDLES
@@ -259,4 +262,3 @@ fn endpoint_query(endpoint: &str) -> Option<&str> {
     let query = rest.split('#').next().unwrap_or_default();
     (!query.is_empty()).then_some(query)
 }
-
