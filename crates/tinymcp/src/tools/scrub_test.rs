@@ -31,8 +31,7 @@ fn scrubber_redacts_url_encoded_secrets_and_ignores_empty_values() {
 
 #[test]
 fn scrubber_collects_url_userinfo_credentials() {
-    let scrubber =
-        SecretScrubber::new(&McpAuthConfig::None, "https://short:pw@example.com/mcp");
+    let scrubber = SecretScrubber::new(&McpAuthConfig::None, "https://short:pw@example.com/mcp");
     assert_eq!(
         scrubber.scrub("short pw shortpw"),
         "[redacted] [redacted] [redacted][redacted]"
@@ -82,10 +81,7 @@ fn scrubber_redacts_short_query_credentials_even_inside_other_text() {
 
 #[test]
 fn short_query_credentials_do_not_rewrite_json_structure_keys() {
-    let scrubber = SecretScrubber::new(
-        &McpAuthConfig::None,
-        "https://example.com/mcp?api_key=abc",
-    );
+    let scrubber = SecretScrubber::new(&McpAuthConfig::None, "https://example.com/mcp?api_key=abc");
     let mut value = json!({ "prefixabc": "prefixabc", "abc": "abc" });
     scrubber.scrub_value(&mut value);
     assert_eq!(value["prefixabc"], "prefix[redacted]");
@@ -129,4 +125,3 @@ fn scrub_value_keeps_both_entries_when_keys_collide_after_redaction() {
     assert_eq!(map.get("[redacted]"), Some(&json!("a")));
     assert_eq!(map.get("[redacted] (2)"), Some(&json!("b")));
 }
-

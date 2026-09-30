@@ -143,13 +143,11 @@ async fn echoing_server(
     fail: Option<&'static str>,
 ) -> (String, Arc<parking_lot::Mutex<Vec<Value>>>) {
     let calls = Arc::new(parking_lot::Mutex::new(Vec::new()));
-    let app = Router::new()
-        .route("/mcp", post(handle))
-        .with_state(Echo {
-            echo: echo.to_string(),
-            fail,
-            calls: Arc::clone(&calls),
-        });
+    let app = Router::new().route("/mcp", post(handle)).with_state(Echo {
+        echo: echo.to_string(),
+        fail,
+        calls: Arc::clone(&calls),
+    });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
@@ -306,7 +304,10 @@ async fn failing_calls_redact_configured_secrets_from_errors() {
         let result = call_tool(registry).execute(call_args()).await.unwrap();
         let rendered = full_output(&result);
         assert!(result.is_error, "{kind}: {rendered}");
-        assert!(rendered.contains("mcp_call_tool failed"), "{kind}: {rendered}");
+        assert!(
+            rendered.contains("mcp_call_tool failed"),
+            "{kind}: {rendered}"
+        );
         assert!(rendered.contains(REDACTED), "{kind}: {rendered}");
         assert!(!rendered.contains(SECRET), "{kind} leaked: {rendered}");
         assert!(!rendered.contains(&echo), "{kind} leaked: {rendered}");
@@ -319,7 +320,10 @@ async fn failing_calls_redact_configured_secrets_from_errors() {
             .unwrap();
         let rendered = full_output(&result);
         assert!(result.is_error, "{kind}: {rendered}");
-        assert!(rendered.contains("mcp_list_tools failed"), "{kind}: {rendered}");
+        assert!(
+            rendered.contains("mcp_list_tools failed"),
+            "{kind}: {rendered}"
+        );
         assert!(!rendered.contains(SECRET), "{kind} leaked: {rendered}");
         assert!(!rendered.contains(&echo), "{kind} leaked: {rendered}");
     }
@@ -338,7 +342,10 @@ async fn successful_results_redact_echoed_secrets() {
             .unwrap();
         let rendered = full_output(&result);
         assert!(!result.is_error, "{kind}: {rendered}");
-        assert!(rendered.contains("you sent [redacted]"), "{kind}: {rendered}");
+        assert!(
+            rendered.contains("you sent [redacted]"),
+            "{kind}: {rendered}"
+        );
         assert!(!rendered.contains(SECRET), "{kind} leaked: {rendered}");
         assert!(!rendered.contains(&echo), "{kind} leaked: {rendered}");
 
