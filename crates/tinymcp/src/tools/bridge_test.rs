@@ -94,22 +94,22 @@ fn full_output(result: &ToolResult) -> String {
 
 /// What the loopback server reflects and how it fails.
 #[derive(Clone)]
-struct Echo {
-    echo: String,
+struct Reflect {
+    reflected: String,
     fail: Option<&'static str>,
     calls: Arc<parking_lot::Mutex<Vec<Value>>>,
 }
 
-async fn handle(State(state): State<Echo>, Json(body): Json<Value>) -> axum::response::Response {
+async fn handle(State(state): State<Reflect>, Json(body): Json<Value>) -> axum::response::Response {
     let method = body["method"].as_str().unwrap_or_default().to_string();
     if Some(method.as_str()) == state.fail {
         return (
             StatusCode::INTERNAL_SERVER_ERROR,
-            format!("upstream rejected credential {}", state.echo),
+            format!("upstream rejected credential {}", state.reflected),
         )
             .into_response();
     }
-    let echo = state.echo.clone();
+    let echo = state.reflected.clone();
     let result = match method.as_str() {
         "initialize" => json!({
             "protocolVersion": tinymcp_bus::LATEST_PROTOCOL_VERSION,
@@ -143,11 +143,13 @@ async fn echoing_server(
     fail: Option<&'static str>,
 ) -> (String, Arc<parking_lot::Mutex<Vec<Value>>>) {
     let calls = Arc::new(parking_lot::Mutex::new(Vec::new()));
-    let app = Router::new().route("/mcp", post(handle)).with_state(Echo {
-        echo: echo.to_string(),
-        fail,
-        calls: Arc::clone(&calls),
-    });
+    let app = Router::new()
+        .route("/mcp", post(handle))
+        .with_state(Reflect {
+            echo: echo.to_string(),
+            fail,
+            calls: Arc::clone(&calls),
+        });
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
