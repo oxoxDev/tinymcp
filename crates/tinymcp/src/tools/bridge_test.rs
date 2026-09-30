@@ -146,7 +146,7 @@ async fn echoing_server(
     let app = Router::new()
         .route("/mcp", post(handle))
         .with_state(Reflect {
-            echo: echo.to_string(),
+            reflected: echo.to_string(),
             fail,
             calls: Arc::clone(&calls),
         });
