@@ -359,6 +359,3 @@ fn required_string_arg(args: &Value, key: &str) -> anyhow::Result<String> {
         .ok_or_else(|| anyhow::anyhow!("missing required `{key}`"))?;
     Ok(value.to_string())
 }
-
-#[cfg(test)]
-#[path = "mcp_tests.rs"]
