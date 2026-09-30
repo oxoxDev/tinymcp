@@ -10,6 +10,10 @@
 //! What stays with the host is the decision to allow a call at all:
 //! [`McpCallTool`] takes an [`ActGate`] it runs before anything is sent.
 
+// The tool names and descriptions are fixed strings, and the rendered Markdown
+// is built a line at a time; both are clearer as written.
+#![allow(clippy::format_push_string, clippy::unnecessary_literal_bound)]
+
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -94,7 +98,6 @@ impl Tool for McpListServersTool {
                 let source = match server.source {
                     McpRegistrySource::Config => "config",
                     McpRegistrySource::Host => "host",
-                    _ => "unknown",
                 };
                 md.push_str(&format!(
                     "\n- **{}** ({source})\n  - endpoint: `{}`\n  - auth: `{}`",
