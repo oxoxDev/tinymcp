@@ -32,7 +32,7 @@ const CREDENTIAL_QUERY_PARAM_NEEDLES: [&str; 7] = [
 /// Every secret one configured server was dialled with, ready to scrub.
 #[derive(Debug, Clone)]
 pub struct SecretScrubber {
-    secrets: Vec<String>,
+    pub(super) secrets: Vec<String>,
     strict: Vec<String>,
 }
 
@@ -189,7 +189,7 @@ impl SecretScrubber {
         out
     }
 
-    fn scrub_value(&self, value: &mut Value) {
+    pub(super) fn scrub_value(&self, value: &mut Value) {
         match value {
             Value::String(text) => *text = self.scrub(text),
             Value::Array(items) => items.iter_mut().for_each(|item| self.scrub_value(item)),
