@@ -84,30 +84,28 @@ impl SecretScrubber {
         if endpoint_query(endpoint).is_some()
             && let Ok(url) = url::Url::parse(endpoint)
         {
-            {
-                strict.extend(url.query_pairs().filter_map(|(name, value)| {
-                    let name = name.to_ascii_lowercase();
-                    let credential_like = CREDENTIAL_QUERY_PARAM_NEEDLES
-                        .iter()
-                        .any(|needle| name.contains(needle));
-                    let value = value.into_owned();
-                    credential_like.then_some(value)
-                }));
-                // Retain the spelling supplied in the endpoint: form decoding turns
-                // '+' into a space, which ordinary URL encoding does not recreate.
-                if let Some(query) = url.query() {
-                    for pair in query.split('&') {
-                        if let Some((name, value)) = pair.split_once('=') {
-                            let decoded_name = url::form_urlencoded::parse(name.as_bytes())
-                                .next()
-                                .map(|(name, _)| name.to_ascii_lowercase())
-                                .unwrap_or_default();
-                            if CREDENTIAL_QUERY_PARAM_NEEDLES
-                                .iter()
-                                .any(|needle| decoded_name.contains(needle))
-                            {
-                                strict.push(value.to_string());
-                            }
+            strict.extend(url.query_pairs().filter_map(|(name, value)| {
+                let name = name.to_ascii_lowercase();
+                let credential_like = CREDENTIAL_QUERY_PARAM_NEEDLES
+                    .iter()
+                    .any(|needle| name.contains(needle));
+                let value = value.into_owned();
+                credential_like.then_some(value)
+            }));
+            // Retain the spelling supplied in the endpoint: form decoding turns
+            // '+' into a space, which ordinary URL encoding does not recreate.
+            if let Some(query) = url.query() {
+                for pair in query.split('&') {
+                    if let Some((name, value)) = pair.split_once('=') {
+                        let decoded_name = url::form_urlencoded::parse(name.as_bytes())
+                            .next()
+                            .map(|(name, _)| name.to_ascii_lowercase())
+                            .unwrap_or_default();
+                        if CREDENTIAL_QUERY_PARAM_NEEDLES
+                            .iter()
+                            .any(|needle| decoded_name.contains(needle))
+                        {
+                            strict.push(value.to_string());
                         }
                     }
                 }
