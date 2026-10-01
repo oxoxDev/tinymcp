@@ -1351,9 +1351,12 @@ fn a_tool_with_no_properties_produces_no_headers() {
     }))
     .unwrap();
 
-    assert_eq!(mcp_param_headers_from_schema(&tool, &json!({ "anything": 1 }))
+    assert_eq!(
+        mcp_param_headers_from_schema(&tool, &json!({ "anything": 1 }))
             .expect("headers build")
-            .len(), 0);
+            .len(),
+        0
+    );
 }
 
 #[test]
