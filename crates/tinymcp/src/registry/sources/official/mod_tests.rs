@@ -64,9 +64,9 @@ fn a_row_with_no_server_key_is_a_parse_error_rather_than_a_blank_card() {
 
 #[test]
 fn an_empty_response_yields_no_rows() {
-    assert!(list_response(&json!([]), None).into_summaries().is_empty());
+    assert_eq!(list_response(&json!([]), None).into_summaries().len(), 0);
     let empty: OfficialListResponse = serde_json::from_value(json!({})).unwrap();
-    assert!(empty.into_summaries().is_empty());
+    assert_eq!(empty.into_summaries().len(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +82,7 @@ fn a_row_offering_no_way_to_connect_is_dropped() {
         None,
     );
 
-    assert!(response.into_summaries().is_empty());
+    assert_eq!(response.into_summaries().len(), 0);
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn a_deprecated_row_is_dropped() {
         None,
     );
 
-    assert!(response.into_summaries().is_empty());
+    assert_eq!(response.into_summaries().len(), 0);
 }
 
 #[test]
@@ -905,7 +905,7 @@ async fn a_page_past_the_end_of_the_chain_comes_back_empty() {
         .await
         .expect("running out of pages is not a failure");
 
-    assert!(servers.is_empty());
+    assert_eq!(servers.len(), 0);
     assert_eq!(total_pages, 5);
 }
 

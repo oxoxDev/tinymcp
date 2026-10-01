@@ -25,7 +25,7 @@ fn scrubber_redacts_url_encoded_secrets_and_ignores_empty_values() {
         &McpAuthConfig::BearerToken { token: "  ".into() },
         "https://example.com/mcp?",
     );
-    assert!(empty.secrets.is_empty());
+    assert_eq!(empty.secrets.len(), 0);
     assert_eq!(empty.scrub("unchanged"), "unchanged");
 }
 

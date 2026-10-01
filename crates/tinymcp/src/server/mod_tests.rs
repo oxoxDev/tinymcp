@@ -176,7 +176,7 @@ impl McpServerHandler for Minimal {
 async fn a_handler_without_resources_lists_none_and_reads_none() {
     let handler = Minimal;
     assert_eq!(handler.source_type_prefix(), "mcp");
-    assert!(handler.list_resources().is_empty());
+    assert_eq!(handler.list_resources().len(), 0);
     let err = handler
         .read_resource("demo://a")
         .await
@@ -186,7 +186,7 @@ async fn a_handler_without_resources_lists_none_and_reads_none() {
         ToolCallError::ResourceNotFound("no resource with uri `demo://a`".to_string())
     );
     let context = RequestContext::new("mcp", RequestHeaders::new());
-    assert!(handler.list_tools(&context).await.is_empty());
+    assert_eq!(handler.list_tools(&context).await.len(), 0);
     let err = handler
         .call_tool(&context, "x", Map::new())
         .await

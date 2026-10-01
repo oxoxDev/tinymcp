@@ -175,12 +175,12 @@ fn a_connection_with_no_schema_requires_nothing() {
         Some("https://api.test/mcp"),
     )]));
 
-    assert!(required.is_empty());
+    assert_eq!(required.len(), 0);
 }
 
 #[test]
 fn a_server_with_no_connections_requires_nothing() {
-    assert!(collect_required_env_keys(&detail(Vec::new())).is_empty());
+    assert_eq!(collect_required_env_keys(&detail(Vec::new())).len(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -201,8 +201,8 @@ fn a_hosted_connection_becomes_a_remote_install_with_no_command() {
             url: "https://api.test/mcp".into()
         }
     );
-    assert!(command.is_empty());
-    assert!(args.is_empty());
+    assert_eq!(command.len(), 0);
+    assert_eq!(args.len(), 0);
 }
 
 #[test]
@@ -466,7 +466,7 @@ async fn a_server_that_is_turned_off_is_not_reconnected_when_its_credentials_cha
         .unwrap();
 
     assert_eq!(outcome.status, UpdateEnvStatus::Disabled);
-    assert!(outcome.tools.is_empty());
+    assert_eq!(outcome.tools.len(), 0);
     assert_eq!(
         registry
             .store()
@@ -1140,7 +1140,7 @@ async fn a_connection_test_reaches_the_server_without_installing_it() {
 
     assert_eq!(tools.len(), 1);
     assert_eq!(tools[0].name, "forecast");
-    assert!(registry.installed_list().unwrap().is_empty());
+    assert_eq!(registry.installed_list().unwrap().len(), 0);
 }
 
 #[tokio::test]
@@ -1322,7 +1322,7 @@ async fn the_facade_hands_out_the_pieces_a_host_drives_directly() {
     let (handle, _receiver) = registry.vault().request("API_KEY").await;
     assert!(registry.vault().submit(&handle, "sekrit".into()).await);
     assert_eq!(registry.oauth().pending_count(), 0);
-    assert!(registry.connected_overview().await.is_empty());
+    assert_eq!(registry.connected_overview().await.len(), 0);
 }
 
 #[tokio::test]
@@ -1480,7 +1480,7 @@ async fn installing_and_connecting_reports_the_install_even_when_the_connect_fai
         .await
         .expect("the install succeeded even though the connect did not");
 
-    assert!(outcome.tools.is_empty());
+    assert_eq!(outcome.tools.len(), 0);
     assert_eq!(registry.installed_list().unwrap().len(), 1);
 }
 
