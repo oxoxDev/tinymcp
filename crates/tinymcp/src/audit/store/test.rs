@@ -296,7 +296,7 @@ fn an_offset_skips_the_most_recent_records() {
 
 #[test]
 fn an_empty_log_lists_nothing() {
-    assert!(store().list(&all()).unwrap().is_empty());
+    assert_eq!(store().list(&all()).unwrap().len(), 0);
 }
 
 #[test]

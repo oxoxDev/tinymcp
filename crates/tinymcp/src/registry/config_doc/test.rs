@@ -237,7 +237,7 @@ fn a_declaration_becomes_a_row_keyed_by_its_name() {
     assert_eq!(row.display_name, "fs");
     assert_eq!(row.command_kind, CommandKind::Node);
     assert_eq!(row.installed_at, 42);
-    assert!(row.env_keys.is_empty());
+    assert_eq!(row.env_keys.len(), 0);
 }
 
 #[test]
@@ -274,7 +274,7 @@ fn a_null_args_list_and_a_null_flag_read_as_absent() {
         "mcpServers": { "a": { "command": "c", "args": null, "enabled": null, "env": null, "url": null } }
     }))
     .unwrap();
-    assert!(declared[0].args.is_empty());
+    assert_eq!(declared[0].args.len(), 0);
     assert!(declared[0].enabled);
     assert_eq!(declared[0].credentials, None);
 }
@@ -346,8 +346,8 @@ async fn applying_to_an_empty_store_installs_every_declared_server() {
         .unwrap();
 
     assert_eq!(names(&report.installed), ["hosted", "local"]);
-    assert!(report.updated.is_empty());
-    assert!(report.removed.is_empty());
+    assert_eq!(report.updated.len(), 0);
+    assert_eq!(report.removed.len(), 0);
 
     let local = registry
         .store()
@@ -388,9 +388,9 @@ async fn a_server_absent_from_the_document_is_removed() {
 
     assert_eq!(names(&report.removed), ["gone"]);
     assert_eq!(report.removed[0].server_id, "id-gone");
-    assert!(report.installed.is_empty());
-    assert!(report.updated.is_empty());
-    assert!(report.connect_queued.is_empty());
+    assert_eq!(report.installed.len(), 0);
+    assert_eq!(report.updated.len(), 0);
+    assert_eq!(report.connect_queued.len(), 0);
     assert!(registry.store().find_server("id-gone").unwrap().is_none());
 }
 
@@ -410,10 +410,10 @@ async fn re_applying_what_a_read_shows_changes_nothing_and_keeps_credentials() {
 
     let report = registry.apply_config_doc(&doc).await.unwrap();
 
-    assert!(report.installed.is_empty());
-    assert!(report.updated.is_empty());
-    assert!(report.removed.is_empty());
-    assert!(report.connect_queued.is_empty());
+    assert_eq!(report.installed.len(), 0);
+    assert_eq!(report.updated.len(), 0);
+    assert_eq!(report.removed.len(), 0);
+    assert_eq!(report.connect_queued.len(), 0);
     assert_eq!(registry.store().load_env_values("id-a").unwrap(), stored);
 }
 
@@ -504,7 +504,7 @@ async fn a_disabled_server_is_updated_but_not_connected() {
         .unwrap();
 
     assert_eq!(names(&report.updated), ["a"]);
-    assert!(report.connect_queued.is_empty());
+    assert_eq!(report.connect_queued.len(), 0);
     assert!(!registry.store().get_server("id-a").unwrap().enabled);
 }
 

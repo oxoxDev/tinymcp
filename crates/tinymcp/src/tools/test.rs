@@ -457,12 +457,12 @@ async fn disabling_or_uninstalling_stops_cached_tools_appearing() {
     );
 
     registry.set_enabled("s1", false).await.unwrap();
-    assert!(registry.cached_overview().await.unwrap().is_empty());
+    assert_eq!(registry.cached_overview().await.unwrap().len(), 0);
 
     registry.set_enabled("s1", true).await.unwrap();
     registry.connect("s1").await.unwrap();
     registry.uninstall("s1").await.unwrap();
-    assert!(registry.cached_overview().await.unwrap().is_empty());
+    assert_eq!(registry.cached_overview().await.unwrap().len(), 0);
 }
 
 #[tokio::test]

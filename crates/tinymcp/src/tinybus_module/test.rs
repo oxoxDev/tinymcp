@@ -99,7 +99,7 @@ fn an_absent_configuration_decodes_to_a_working_default() {
     let config: ModuleConfig = serde_json::from_str("{}").expect("the empty object decodes");
 
     assert_eq!(config.data_dir, None);
-    assert!(config.client.servers.is_empty());
+    assert_eq!(config.client.servers.len(), 0);
     assert!(config.client.enabled);
 }
 
@@ -138,7 +138,7 @@ fn a_service_with_no_data_directory_persists_nothing() {
     // The right shape for a host that only wants its statically declared
     // servers: there is nothing to persist, and creating files for it would
     // leave state nobody asked for.
-    assert!(service().dynamic().installed_list().unwrap().is_empty());
+    assert_eq!(service().dynamic().installed_list().unwrap().len(), 0);
 }
 
 #[test]
@@ -1038,7 +1038,7 @@ fn a_null_configuration_decodes_to_a_working_default() {
         serde_json::from_value(serde_json::Value::Null).expect("null decodes");
 
     assert_eq!(config.data_dir, None);
-    assert!(config.client.servers.is_empty());
+    assert_eq!(config.client.servers.len(), 0);
     assert!(config.client.enabled);
 }
 

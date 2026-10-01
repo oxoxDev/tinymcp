@@ -416,7 +416,7 @@ async fn a_fresh_map_holds_nothing() {
     assert_eq!(connections.connected_count().await, 0);
     assert!(!connections.is_connected("srv-1").await);
     assert!(connections.tools_for("srv-1").await.is_none());
-    assert!(connections.connected_overview().await.is_empty());
+    assert_eq!(connections.connected_overview().await.len(), 0);
 }
 
 #[tokio::test]

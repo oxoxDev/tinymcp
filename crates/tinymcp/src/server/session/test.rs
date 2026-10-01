@@ -74,6 +74,6 @@ fn the_first_observation_wins() {
 #[test]
 fn diagnostic_keys_are_sorted_and_empty_for_non_objects() {
     assert_eq!(object_keys(&json!({"b": 1, "a": 2})), ["a", "b"]);
-    assert!(object_keys(&json!(null)).is_empty());
-    assert!(object_keys(&json!([1])).is_empty());
+    assert_eq!(object_keys(&json!(null)).len(), 0);
+    assert_eq!(object_keys(&json!([1])).len(), 0);
 }
