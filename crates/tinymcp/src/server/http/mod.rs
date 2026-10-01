@@ -419,4 +419,5 @@ fn text_error(status: StatusCode, message: &str) -> Response {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

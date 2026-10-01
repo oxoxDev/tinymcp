@@ -42,4 +42,5 @@ mod types;
 pub use types::{IDLE_TTL, REQUEST_TIMEOUT, SecretRef, SecretVault};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

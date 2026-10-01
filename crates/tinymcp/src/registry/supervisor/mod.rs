@@ -46,4 +46,5 @@ pub use report::{ServerRef, SupervisorEvent, TickReport};
 pub use types::{SupervisedHost, Supervisor, SupervisorConfig};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

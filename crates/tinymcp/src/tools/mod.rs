@@ -99,9 +99,12 @@ pub fn tools_for(
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;
 
 #[cfg(test)]
+#[path = "bridge_tests.rs"]
 mod bridge_test;
 #[cfg(test)]
+#[path = "scrub_tests.rs"]
 mod scrub_test;

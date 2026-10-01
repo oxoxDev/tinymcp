@@ -11,4 +11,5 @@ mod types;
 pub use types::{AuthDetection, AuthKind};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

@@ -34,4 +34,5 @@ pub use install::{build_install_transport, collect_required_env_keys, pick_conne
 pub use types::McpRegistry;
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

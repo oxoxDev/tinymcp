@@ -31,4 +31,5 @@ mod types;
 pub(super) use types::Maintenance;
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

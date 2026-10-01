@@ -45,4 +45,5 @@ pub(crate) fn validate_protocol_version(version: &str) -> Result<()> {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

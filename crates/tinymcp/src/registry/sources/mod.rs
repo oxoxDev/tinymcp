@@ -40,4 +40,5 @@ pub use smithery::SmitheryRegistry;
 pub use types::{Registries, RegistrySource, SOURCE_MCP_OFFICIAL, SOURCE_SMITHERY};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

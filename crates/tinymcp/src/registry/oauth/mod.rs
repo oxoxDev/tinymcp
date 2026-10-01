@@ -49,4 +49,5 @@ pub use tokens::{OAUTH_BUNDLE_KEY, refresh_if_expired};
 pub use types::{AuthDetection, AuthKind};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

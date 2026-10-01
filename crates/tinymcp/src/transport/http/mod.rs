@@ -1037,4 +1037,5 @@ fn fill_missing_metadata(
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

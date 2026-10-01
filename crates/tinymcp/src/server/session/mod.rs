@@ -120,4 +120,5 @@ pub(crate) fn object_keys(value: &Value) -> Vec<String> {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

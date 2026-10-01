@@ -39,4 +39,5 @@ pub use document::{ROOT_KEY, merge_credentials, parse, render, same_dial, to_ins
 pub use types::{AppliedServer, ConfigApplyReport, Declared};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;
