@@ -194,7 +194,7 @@ fn server_env_serializes_in_a_stable_order() {
 fn a_client_config_decodes_from_the_empty_object() {
     let config: McpClientConfig = serde_json::from_value(json!({})).expect("empty object decodes");
     assert!(config.enabled);
-    assert!(config.servers.is_empty());
+    assert_eq!(config.servers.len(), 0);
     assert_eq!(config.proxy, None);
     assert_eq!(config.registry_auth, McpRegistryAuthConfig::default());
 }
@@ -309,7 +309,7 @@ fn a_redacted_registry_auth_never_serializes_a_secret() {
 fn a_proxy_decodes_from_the_empty_object_with_nothing_set() {
     let proxy: McpProxyConfig = serde_json::from_value(json!({})).expect("empty object decodes");
     assert_eq!(proxy, McpProxyConfig::default());
-    assert!(proxy.no_proxy.is_empty());
+    assert_eq!(proxy.no_proxy.len(), 0);
 }
 
 #[test]

@@ -333,7 +333,7 @@ async fn a_foreign_object_decodes_to_an_empty_page_rather_than_failing() {
         .await
         .expect("a foreign object still decodes");
 
-    assert!(servers.is_empty());
+    assert_eq!(servers.len(), 0);
     assert_eq!(total_pages, 0);
 }
 

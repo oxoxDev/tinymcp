@@ -338,7 +338,7 @@ async fn the_spawn_path_is_resolved_once_and_cached() {
     // Whatever else is true of this machine, the process path is one of the
     // sources, so the result cannot be empty on any machine that has one.
     if std::env::var("PATH").is_ok_and(|path| !path.is_empty()) {
-        assert!(!first.is_empty());
+        assert_ne!(first.len(), 0);
     }
 }
 

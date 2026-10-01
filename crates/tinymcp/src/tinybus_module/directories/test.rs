@@ -105,7 +105,7 @@ async fn opening_a_directory_returns_a_path_that_answers() {
     let installed: Vec<Value> = call(&connection, &path, "InstalledList", json!([]))
         .await
         .unwrap();
-    assert!(installed.is_empty());
+    assert_eq!(installed.len(), 0);
     assert!(crate::Store::path_for(other.path()).exists());
 }
 

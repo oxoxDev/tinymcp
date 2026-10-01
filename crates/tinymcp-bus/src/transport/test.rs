@@ -272,7 +272,7 @@ fn an_error_result_is_flagged_and_carries_its_message() {
 #[test]
 fn text_skips_json_blocks_but_output_renders_them() {
     let result = McpToolResult::json(json!({ "key": "value" }));
-    assert!(result.text().is_empty());
+    assert_eq!(result.text().len(), 0);
     assert!(result.output().contains("key"));
 }
 
@@ -344,7 +344,7 @@ fn output_for_llm_falls_back_when_there_is_no_markdown() {
 #[test]
 fn a_default_tool_result_is_empty_and_successful() {
     let result = McpToolResult::default();
-    assert!(result.content.is_empty());
+    assert_eq!(result.content.len(), 0);
     assert!(!result.is_error);
     assert_eq!(result.output(), "");
 }
@@ -387,8 +387,8 @@ fn protected_resource_metadata_decodes_with_only_its_resource() {
     let metadata: ProtectedResourceMetadata =
         serde_json::from_value(json!({ "resource": "https://example.test/mcp" })).unwrap();
     assert_eq!(metadata.resource, "https://example.test/mcp");
-    assert!(metadata.authorization_servers.is_empty());
-    assert!(metadata.scopes_supported.is_empty());
+    assert_eq!(metadata.authorization_servers.len(), 0);
+    assert_eq!(metadata.scopes_supported.len(), 0);
 }
 
 #[test]
@@ -397,7 +397,7 @@ fn authorization_server_metadata_decodes_with_only_its_issuer() {
         serde_json::from_value(json!({ "issuer": "https://auth.test" })).unwrap();
     assert_eq!(metadata.issuer, "https://auth.test");
     assert_eq!(metadata.token_endpoint, None);
-    assert!(metadata.code_challenge_methods_supported.is_empty());
+    assert_eq!(metadata.code_challenge_methods_supported.len(), 0);
 }
 
 #[test]

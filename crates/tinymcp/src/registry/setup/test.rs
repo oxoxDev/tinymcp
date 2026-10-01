@@ -207,7 +207,7 @@ async fn resolving_leaves_the_handles_in_place() {
 #[tokio::test]
 async fn resolving_nothing_yields_nothing() {
     let vault = SecretVault::new();
-    assert!(vault.resolve(&HashMap::new()).await.unwrap().is_empty());
+    assert_eq!(vault.resolve(&HashMap::new()).await.unwrap().len(), 0);
 }
 
 // ---------------------------------------------------------------------------

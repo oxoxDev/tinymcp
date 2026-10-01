@@ -495,7 +495,7 @@ fn a_summary_tolerates_everything_optional_being_absent() {
     assert_eq!(summary.use_count, 0);
     assert!(!summary.is_deployed);
     assert!(!summary.official);
-    assert!(summary.source.is_empty());
+    assert_eq!(summary.source.len(), 0);
 }
 
 #[test]

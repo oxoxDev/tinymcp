@@ -119,7 +119,7 @@ fn metadata_merge_preserves_rfc_default_for_omitted_grant_types() {
 
     let merged = fill_missing_metadata(primary, secondary);
 
-    assert!(merged.grant_types_supported.is_empty());
+    assert_eq!(merged.grant_types_supported.len(), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -528,7 +528,7 @@ async fn a_404_while_holding_a_session_reinitializes_and_retries_once() {
 
     let tools = client.list_tools().await.expect("list_tools");
 
-    assert!(tools.is_empty());
+    assert_eq!(tools.len(), 0);
     assert_eq!(state.inits(), 2, "the session was not reinitialized");
     assert_eq!(state.calls(), 2, "the request was not retried exactly once");
 }
@@ -1314,7 +1314,7 @@ fn an_argument_not_marked_for_mirroring_stays_in_the_body() {
         mcp_param_headers_from_schema(&tool_with_header_property(), &json!({ "plain": "value" }))
             .expect("headers build");
 
-    assert!(headers.is_empty());
+    assert_eq!(headers.len(), 0);
 }
 
 #[test]
@@ -1322,7 +1322,7 @@ fn a_marked_argument_that_was_not_supplied_produces_no_header() {
     let headers = mcp_param_headers_from_schema(&tool_with_header_property(), &json!({}))
         .expect("headers build");
 
-    assert!(headers.is_empty());
+    assert_eq!(headers.len(), 0);
 }
 
 #[test]
@@ -1340,7 +1340,7 @@ fn arguments_that_are_not_an_object_produce_no_headers() {
         mcp_param_headers_from_schema(&tool_with_header_property(), &json!("not an object"))
             .expect("headers build");
 
-    assert!(headers.is_empty());
+    assert_eq!(headers.len(), 0);
 }
 
 #[test]
@@ -1351,10 +1351,11 @@ fn a_tool_with_no_properties_produces_no_headers() {
     }))
     .unwrap();
 
-    assert!(
+    assert_eq!(
         mcp_param_headers_from_schema(&tool, &json!({ "anything": 1 }))
             .expect("headers build")
-            .is_empty()
+            .len(),
+        0
     );
 }
 

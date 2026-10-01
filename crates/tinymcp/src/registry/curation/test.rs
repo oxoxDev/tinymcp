@@ -47,7 +47,7 @@ fn every_canonical_name_is_fully_qualified() {
     // A bare vendor word here would badge far more than intended.
     for name in OFFICIAL_SERVERS {
         assert!(name.contains('/'), "{name} is not a qualified name");
-        assert!(!name.trim().is_empty());
+        assert_ne!(name.trim().len(), 0);
     }
 }
 
@@ -100,7 +100,7 @@ fn a_row_arriving_with_the_badge_set_has_it_cleared() {
 fn badging_an_empty_catalog_does_nothing() {
     let mut servers: Vec<RegistryServerSummary> = Vec::new();
     tag_official(&mut servers);
-    assert!(servers.is_empty());
+    assert_eq!(servers.len(), 0);
 }
 
 #[test]
@@ -183,7 +183,7 @@ fn filtering_reports_the_full_count_when_it_drops_everything() {
     // user as "there is nothing here".
     let mut servers = vec![server("a/one"), server("b/two"), server("c/three")];
     assert_eq!(retain_perfect_servers(&mut servers), 3);
-    assert!(servers.is_empty());
+    assert_eq!(servers.len(), 0);
 }
 
 #[test]
