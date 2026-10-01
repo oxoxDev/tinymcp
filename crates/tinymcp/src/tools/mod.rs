@@ -30,19 +30,23 @@
 //! assert_eq!(naming::tool_name("@acme/ticktick-mcp", "readGoals"), "mcp_ticktick_read_goals");
 //! ```
 
+pub mod bridge;
 pub mod invoker;
 pub mod naming;
 mod result;
 mod schema;
+mod scrub;
 mod source;
 mod tool;
 
 use std::collections::HashSet;
 use std::sync::Arc;
 
+pub use bridge::{ActGate, McpCallTool, McpListServersTool, McpListToolsTool};
 pub use invoker::McpToolInvoker;
 pub use result::{MAX_LLM_BLOCK_BYTES, tool_result};
 pub use schema::tool_parameters;
+pub use scrub::{REDACTED, SecretScrubber};
 pub use source::{McpExposure, McpToolSource};
 pub use tool::McpServerTool;
 
@@ -96,3 +100,8 @@ pub fn tools_for(
 
 #[cfg(test)]
 mod test;
+
+#[cfg(test)]
+mod bridge_test;
+#[cfg(test)]
+mod scrub_test;
