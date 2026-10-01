@@ -341,7 +341,7 @@ fn auth_kind(auth: &McpAuthConfig) -> &'static str {
     }
 }
 
-fn endpoint_without_query(endpoint: &str) -> String {
+pub(super) fn endpoint_without_query(endpoint: &str) -> String {
     if let Ok(mut url) = url::Url::parse(endpoint) {
         let _ = url.set_username("");
         let _ = url.set_password(None);

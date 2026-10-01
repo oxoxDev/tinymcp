@@ -451,3 +451,39 @@ async fn call_tool_asks_the_act_gate_first_and_a_refusal_sends_nothing() {
     assert!(!result.is_error);
     assert_eq!(calls.lock().len(), 1);
 }
+
+#[test]
+fn every_bridge_tool_renders_markdown_and_debug_omits_the_gate() {
+    let registry = test_registry();
+    assert!(McpListServersTool::new(Arc::clone(&registry)).supports_markdown());
+    assert!(McpListToolsTool::new(Arc::clone(&registry)).supports_markdown());
+    let call = call_tool(registry);
+    assert!(call.supports_markdown());
+    let debug = format!("{call:?}");
+    assert!(debug.starts_with("McpCallTool"), "{debug}");
+    assert!(debug.contains(".."), "the act gate is elided: {debug}");
+}
+
+#[tokio::test]
+async fn call_tool_without_arguments_is_refused_before_any_call() {
+    let (base, calls) = echoing_server("plain", None).await;
+    let registry = registry_with(&format!("{base}/mcp"), McpAuthConfig::None);
+    let error = call_tool(registry)
+        .execute(json!({ "server": "docs", "tool": "whoami" }))
+        .await
+        .unwrap_err();
+    assert_eq!(error.to_string(), "missing required `arguments` object");
+    assert!(calls.lock().is_empty());
+}
+
+#[test]
+fn an_endpoint_that_is_not_a_url_is_cut_at_its_query_or_fragment() {
+    use super::bridge::endpoint_without_query;
+    assert_eq!(endpoint_without_query("docs/mcp?api_key=x"), "docs/mcp");
+    assert_eq!(endpoint_without_query("docs/mcp#frag"), "docs/mcp");
+    assert_eq!(endpoint_without_query("docs/mcp"), "docs/mcp");
+    assert_eq!(
+        endpoint_without_query("https://u:p@example.com/mcp?k=v#f"),
+        "https://example.com/mcp"
+    );
+}
