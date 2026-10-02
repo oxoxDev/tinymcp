@@ -431,4 +431,5 @@ pub fn required_runtime(command: &str) -> CommandKind {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

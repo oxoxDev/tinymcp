@@ -45,4 +45,5 @@ pub(crate) use dial::build_http_auth;
 pub use types::{Connections, ProbeOutcome, REMOTE_REQUEST_TIMEOUT};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

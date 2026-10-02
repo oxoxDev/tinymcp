@@ -24,4 +24,5 @@ mod types;
 pub use types::{BOOT_CONCURRENCY, BootOutcome, connect_installed_servers};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

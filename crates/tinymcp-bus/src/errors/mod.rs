@@ -113,4 +113,5 @@ pub const ALL: &[&str] = &[
 ];
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

@@ -33,4 +33,5 @@ mod types;
 pub use types::{McpRegistrySource, McpServerDefinition, McpServerRegistry, McpTransportClient};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

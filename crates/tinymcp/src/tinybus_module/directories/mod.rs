@@ -46,4 +46,5 @@ pub(super) use types::DirectoryOpener;
 pub(super) use types::MAX_OPEN_DIRECTORIES;
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

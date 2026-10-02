@@ -44,4 +44,5 @@ pub use tool_cache::{CachedTools, installed_fingerprint, static_cache_key};
 pub use types::Store;
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

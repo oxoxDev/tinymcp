@@ -34,4 +34,5 @@ pub use registry_tools::{RegistryTool, registry_tool_specs};
 pub use types::{AgentToolEffect, AgentToolSpec, ArgsError};
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

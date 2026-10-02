@@ -544,4 +544,5 @@ fn rendered_body(body: &str) -> String {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

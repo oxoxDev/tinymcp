@@ -368,4 +368,5 @@ fn auth_token(auth: &McpRegistryAuthConfig) -> Option<String> {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

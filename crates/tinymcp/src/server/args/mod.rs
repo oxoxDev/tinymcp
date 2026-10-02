@@ -294,4 +294,5 @@ fn bounded_positive(key: &str, value: &Value, max: u64) -> Result<u64, ToolCallE
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

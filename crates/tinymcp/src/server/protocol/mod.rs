@@ -415,4 +415,5 @@ fn valid_request_id(id: &Value) -> bool {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

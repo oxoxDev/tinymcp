@@ -205,4 +205,5 @@ pub(super) fn tag_source(mut servers: Vec<RegistryServerSummary>) -> Vec<Registr
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;

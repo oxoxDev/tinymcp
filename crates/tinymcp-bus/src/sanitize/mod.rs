@@ -233,4 +233,5 @@ pub fn sanitize_for_llm(input: &str, max_bytes: usize) -> String {
 }
 
 #[cfg(test)]
+#[path = "mod_tests.rs"]
 mod test;
