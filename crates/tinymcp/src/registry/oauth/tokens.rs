@@ -6,7 +6,7 @@ use serde_json::Value;
 
 use super::types::{OAuthBundle, TokenResponse};
 use crate::error::{Error, Result};
-use crate::registry::Store;
+use super::credentials::OAuthCredentialStore;
 
 /// The reserved credential key holding the refresh bundle.
 ///
@@ -46,12 +46,15 @@ const DEFAULT_TOKEN_LIFETIME_SECS: u64 = 3600;
 /// or the token endpoint answers with something unusable, [`Error::Http`] when
 /// it answers with a failure status, and [`Error::Transport`] when it cannot be
 /// reached.
-pub async fn refresh_if_expired(
-    store: &Store,
+pub async fn refresh_if_expired<S>(
+    store: &S,
     http: &reqwest::Client,
     server_id: &str,
-) -> Result<bool> {
-    let env = store.load_env_values(server_id)?;
+) -> Result<bool>
+where
+    S: OAuthCredentialStore + ?Sized,
+{
+    let env = store.load_credentials(server_id).await?;
     let Some(raw_bundle) = env.get(OAUTH_BUNDLE_KEY) else {
         return Ok(false);
     };
@@ -96,7 +99,8 @@ pub async fn refresh_if_expired(
         bundle.client_secret.as_deref(),
         &bundle.token_endpoint,
         &tokens,
-    )?;
+    )
+    .await?;
 
     tracing::info!(server_id, "refreshed an expired access token");
     Ok(true)
@@ -111,15 +115,18 @@ pub async fn refresh_if_expired(
 /// # Errors
 ///
 /// Returns [`Error::Serialization`] when the bundle cannot be encoded, and
-/// [`Error::Store`] when it cannot be written.
-pub(super) fn persist(
-    store: &Store,
+/// whatever the store reports when it cannot be read or written.
+pub(super) async fn persist<S>(
+    store: &S,
     server_id: &str,
     client_id: &str,
     client_secret: Option<&str>,
     token_endpoint: &str,
     tokens: &TokenResponse,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: OAuthCredentialStore + ?Sized,
+{
     let bundle = OAuthBundle {
         refresh_token: tokens.refresh_token.clone(),
         client_id: client_id.to_string(),
@@ -128,7 +135,7 @@ pub(super) fn persist(
         expires_at: now_unix() + tokens.expires_in.unwrap_or(DEFAULT_TOKEN_LIFETIME_SECS),
     };
 
-    let mut env = store.load_env_values(server_id)?;
+    let mut env = store.load_credentials(server_id).await?;
     env.insert(
         ACCESS_TOKEN_KEY.to_string(),
         format!("Bearer {}", tokens.access_token),
@@ -138,14 +145,7 @@ pub(super) fn persist(
         serde_json::to_string(&bundle)?,
     );
 
-    store.set_env_values(server_id, &env)?;
-
-    // The listing of credential *names* lives on the server row and is what a
-    // caller shows the user, so it has to learn about the two new keys.
-    let names: Vec<String> = env.keys().cloned().collect();
-    store.update_env_keys(server_id, &names)?;
-
-    Ok(())
+    store.store_credentials(server_id, &env).await
 }
 
 /// Posts a form to a token endpoint and returns its JSON body.

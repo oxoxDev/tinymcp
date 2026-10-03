@@ -23,7 +23,7 @@ pub mod supervisor;
 pub use boot::{BootOutcome, connect_installed_servers};
 pub use config_doc::{AppliedServer, ConfigApplyReport};
 pub use connections::{Connections, ProbeOutcome, REMOTE_REQUEST_TIMEOUT};
-pub use oauth::{AuthDetection, AuthKind, OAuthFlow};
+pub use oauth::{AuthDetection, AuthKind, OAuthCredentialStore, OAuthFlow};
 pub use ops::McpRegistry;
 pub use setup::{SecretRef, SecretVault};
 pub use sources::{Registries, RegistrySource};

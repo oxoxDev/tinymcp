@@ -12,9 +12,9 @@ use sha2::{Digest, Sha256};
 use super::tokens::{persist, post_form};
 use super::types::{AuthDetection, PendingAuthorization, TokenResponse};
 use crate::error::{Error, Result};
-use crate::registry::Store;
+use super::credentials::OAuthCredentialStore;
 use crate::transport::http::McpHttpClient;
-use tinymcp_bus::{McpProxyConfig, Transport};
+use tinymcp_bus::McpProxyConfig;
 
 /// URL-safe base64 without padding, which is what OAuth uses throughout.
 const B64: base64::engine::general_purpose::GeneralPurpose =
@@ -96,8 +96,11 @@ impl OAuthFlow {
     /// [`Error::Store`] when it cannot be read. A store failure is *not*
     /// collapsed into "open": reporting a server as needing nothing when the
     /// lookup failed would show the user a state that was never checked.
-    pub async fn detect(&self, store: &Store, server_id: &str) -> Result<AuthDetection> {
-        let Some(url) = Self::remote_url(store, server_id)? else {
+    pub async fn detect<S>(&self, store: &S, server_id: &str) -> Result<AuthDetection>
+    where
+        S: OAuthCredentialStore + ?Sized,
+    {
+        let Some(url) = store.remote_url(server_id).await? else {
             // A subprocess install has no HTTP authorization to discover.
             return Ok(AuthDetection::open());
         };
@@ -144,13 +147,13 @@ impl OAuthFlow {
     /// offers everything the flow needs, [`Error::MalformedResponse`] when
     /// registration answers with something unusable, plus whatever the
     /// transport returns.
-    pub async fn begin(
-        &self,
-        store: &Store,
-        server_id: &str,
-        redirect_uri: &str,
-    ) -> Result<String> {
-        let url = Self::remote_url(store, server_id)?
+    pub async fn begin<S>(&self, store: &S, server_id: &str, redirect_uri: &str) -> Result<String>
+    where
+        S: OAuthCredentialStore + ?Sized,
+    {
+        let url = store
+            .remote_url(server_id)
+            .await?
             .ok_or_else(|| Error::malformed("oauth applies only to http-remote servers"))?;
 
         let client = McpHttpClient::builder(url.clone())
@@ -248,7 +251,10 @@ impl OAuthFlow {
     ///
     /// Returns [`Error::MalformedResponse`] when the state is unknown or
     /// expired, plus whatever the token endpoint returns.
-    pub async fn complete(&self, store: &Store, state: &str, code: &str) -> Result<String> {
+    pub async fn complete<S>(&self, store: &S, state: &str, code: &str) -> Result<String>
+    where
+        S: OAuthCredentialStore + ?Sized,
+    {
         let pending = {
             let mut pending = self.pending.lock();
             prune_expired(&mut pending);
@@ -277,13 +283,26 @@ impl OAuthFlow {
             pending.client_secret.as_deref(),
             &pending.token_endpoint,
             &tokens,
-        )?;
+        )
+        .await?;
 
         tracing::info!(
             server_id = %pending.server_id,
             "completed an oauth authorization and stored the token"
         );
         Ok(pending.server_id)
+    }
+
+    /// The server a parked authorization is for, without consuming it.
+    ///
+    /// A browser redirect carries no session, so a host keeping credentials
+    /// per tenant learns which store to [`complete`](Self::complete) into from
+    /// the returned `state` alone. `None` when the state is unknown or expired.
+    #[must_use]
+    pub fn pending_server(&self, state: &str) -> Option<String> {
+        let mut pending = self.pending.lock();
+        prune_expired(&mut pending);
+        pending.get(state).map(|parked| parked.server_id.clone())
     }
 
     /// How many authorizations are parked. For tests and diagnostics.
@@ -352,15 +371,6 @@ impl OAuthFlow {
             .map(ToString::to_string);
 
         Ok((client_id, client_secret))
-    }
-
-    /// The endpoint of an HTTP-remote install, or `None` for a subprocess one.
-    fn remote_url(store: &Store, server_id: &str) -> Result<Option<String>> {
-        let server = store.get_server(server_id)?;
-        Ok(match server.transport {
-            Transport::HttpRemote { ref url } if !url.is_empty() => Some(url.clone()),
-            _ => None,
-        })
     }
 }
 

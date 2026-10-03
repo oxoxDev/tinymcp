@@ -33,6 +33,9 @@
 //!
 //! # What is stored, and where
 //!
+//! Storage is an [`OAuthCredentialStore`]: the SQLite [`Store`] by default,
+//! or a host's own secret store.
+//!
 //! The access token is stored as the server's `Authorization` header value, so
 //! the ordinary connect path picks it up with no special case. The bookkeeping
 //! needed to mint a new one — refresh token, client credentials, token endpoint,
@@ -40,10 +43,12 @@
 //! two underscores, which is the marker meaning "never send this as a request
 //! header and never show it in a credential list".
 
+pub(crate) mod credentials;
 pub(crate) mod flow;
 pub(crate) mod tokens;
 pub(crate) mod types;
 
+pub use credentials::OAuthCredentialStore;
 pub use flow::OAuthFlow;
 pub use tokens::{OAUTH_BUNDLE_KEY, refresh_if_expired};
 pub use types::{AuthDetection, AuthKind};

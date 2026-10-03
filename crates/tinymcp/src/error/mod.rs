@@ -254,6 +254,20 @@ pub enum Error {
         source: Box<rusqlite::Error>,
     },
 
+    /// A host-supplied credential store could not do what was asked of it.
+    ///
+    /// Raised by a host's [`OAuthCredentialStore`] implementation, whose own
+    /// error type this crate cannot name; carried as prose, like [`Self::Bus`].
+    ///
+    /// [`OAuthCredentialStore`]: crate::registry::OAuthCredentialStore
+    #[error("mcp credential store failure while {action}: {detail}")]
+    CredentialStore {
+        /// What was being attempted, in the present participle.
+        action: String,
+        /// What the host's store reported. Must not contain a secret.
+        detail: String,
+    },
+
     /// The store's directory or file could not be reached.
     #[error("mcp store is unreachable at `{}`: {source}", path.display())]
     StoreIo {
@@ -392,6 +406,7 @@ impl Error {
             Self::ClientBuild { .. } => errors::CLIENT_BUILD,
             Self::Serialization { .. } => errors::SERIALIZATION,
             Self::Store { .. } => errors::STORE,
+            Self::CredentialStore { .. } => errors::STORE,
             Self::StoreIo { .. } => errors::STORE_IO,
             Self::Bus { .. } => errors::BUS,
             Self::InvalidArgument { .. } => errors::INVALID_ARGUMENT,
