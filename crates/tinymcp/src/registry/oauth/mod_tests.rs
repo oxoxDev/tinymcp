@@ -1222,3 +1222,10 @@ fn a_kind_serializes_as_the_same_spelling_it_reports() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// A host-owned credential store
+// ---------------------------------------------------------------------------
+
+#[path = "mod_host_store_tests.rs"]
+mod host_store;
