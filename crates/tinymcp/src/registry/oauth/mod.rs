@@ -44,6 +44,7 @@
 //! header and never show it in a credential list".
 
 pub(crate) mod credentials;
+pub(crate) mod endpoint_guard;
 pub(crate) mod flow;
 pub(crate) mod tokens;
 pub(crate) mod types;

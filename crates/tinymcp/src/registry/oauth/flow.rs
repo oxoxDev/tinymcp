@@ -9,10 +9,11 @@ use reqwest::Url;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use super::tokens::{persist, post_form};
+use super::credentials::OAuthCredentialStore;
+use super::endpoint_guard::guard_endpoint;
+use super::tokens::{oauth_failure_reason, persist, post_form};
 use super::types::{AuthDetection, PendingAuthorization, TokenResponse};
 use crate::error::{Error, Result};
-use super::credentials::OAuthCredentialStore;
 use crate::transport::http::McpHttpClient;
 use tinymcp_bus::McpProxyConfig;
 
@@ -50,6 +51,7 @@ pub struct OAuthFlow {
     http: reqwest::Client,
     proxy: Option<McpProxyConfig>,
     pending: Mutex<HashMap<String, PendingAuthorization>>,
+    public_endpoints_only: bool,
 }
 
 impl OAuthFlow {
@@ -70,7 +72,24 @@ impl OAuthFlow {
             http,
             proxy,
             pending: Mutex::new(HashMap::new()),
+            public_endpoints_only: false,
         })
+    }
+
+    /// Refuses authorization, registration and token endpoints that are not
+    /// `https` or that resolve to an internal address.
+    ///
+    /// Those endpoints are advertised by the server being signed in to and
+    /// POSTed to from the host, so a host connecting to servers it does not
+    /// trust turns this on. Off by default: a desktop host signs in to loopback
+    /// development servers. The token endpoint is re-checked when a code is
+    /// exchanged, so a host re-pointed between `begin` and `complete` is
+    /// refused too. [`refresh_if_expired`](super::refresh_if_expired) does not
+    /// re-check: it only ever posts to an endpoint this guard already passed.
+    #[must_use]
+    pub fn require_public_endpoints(mut self) -> Self {
+        self.public_endpoints_only = true;
+        self
     }
 
     /// The HTTP client this flow uses, for the refresh path.
@@ -83,8 +102,10 @@ impl OAuthFlow {
     ///
     /// Decided by probing, not by reading registry metadata, which is often
     /// wrong about this. A server that answers without a challenge is open; one
-    /// that challenges with a usable authorization endpoint wants a browser
-    /// sign-in; anything else wants a static token.
+    /// that challenges with an authorization server [`Self::begin`] can drive
+    /// (authorize, token and dynamic-registration endpoints, and the
+    /// authorization-code grant) wants a browser sign-in; anything else wants a
+    /// static token.
     ///
     /// A discovery failure reports a static token rather than an error. The
     /// user can paste one and find out, which beats being blocked by a probe
@@ -115,10 +136,7 @@ impl OAuthFlow {
             Ok(Some(context)) => Ok(context
                 .authorization_server_metadata
                 .iter()
-                .find(|metadata| {
-                    metadata.authorization_endpoint.is_some()
-                        && supports_authorization_code(metadata)
-                })
+                .find(|metadata| can_drive_sign_in(metadata))
                 .and_then(|metadata| {
                     metadata.authorization_endpoint.clone().map(|endpoint| {
                         AuthDetection::oauth(endpoint, metadata.grant_types_supported.clone())
@@ -171,12 +189,7 @@ impl OAuthFlow {
         let metadata = context
             .authorization_server_metadata
             .iter()
-            .find(|metadata| {
-                metadata.authorization_endpoint.is_some()
-                    && metadata.token_endpoint.is_some()
-                    && metadata.registration_endpoint.is_some()
-                    && supports_authorization_code(metadata)
-            })
+            .find(|metadata| can_drive_sign_in(metadata))
             .ok_or_else(|| Error::AuthDiscovery {
                 detail: "no advertised authorization server offers an authorize endpoint, a token \
                          endpoint, and dynamic client registration together"
@@ -194,6 +207,12 @@ impl OAuthFlow {
                 "the chosen authorization server lost an endpoint between checks",
             ));
         };
+
+        if self.public_endpoints_only {
+            guard_endpoint(&authorization_endpoint, "authorization").await?;
+            guard_endpoint(&token_endpoint, "token").await?;
+            guard_endpoint(&registration_endpoint, "registration").await?;
+        }
 
         let (client_id, client_secret) = self
             .register_client(&registration_endpoint, redirect_uri)
@@ -273,6 +292,9 @@ impl OAuthFlow {
             form.push(("client_secret", secret));
         }
 
+        if self.public_endpoints_only {
+            guard_endpoint(&pending.token_endpoint, "token").await?;
+        }
         let body = post_form(&self.http, &pending.token_endpoint, &form).await?;
         let tokens = TokenResponse::parse(&body)?;
 
@@ -349,7 +371,7 @@ impl OAuthFlow {
             return Err(Error::Http {
                 endpoint: crate::redact_endpoint(registration_endpoint),
                 status: status.as_u16(),
-                body: text,
+                body: oauth_failure_reason(&text),
             });
         }
 
@@ -372,6 +394,21 @@ impl OAuthFlow {
 
         Ok((client_id, client_secret))
     }
+}
+
+/// Whether this flow can run a sign-in against an authorization server: it
+/// advertises an authorize endpoint, a token endpoint and dynamic client
+/// registration, and accepts an authorization code.
+///
+/// [`OAuthFlow::detect`] and [`OAuthFlow::begin`] both ask this one question,
+/// so detection never offers a sign-in that `begin` would then refuse — a
+/// server with no registration endpoint (Slack's, for one) reads as wanting a
+/// static token, not as a Sign in button that leads nowhere.
+fn can_drive_sign_in(metadata: &tinymcp_bus::AuthorizationServerMetadata) -> bool {
+    metadata.authorization_endpoint.is_some()
+        && metadata.token_endpoint.is_some()
+        && metadata.registration_endpoint.is_some()
+        && supports_authorization_code(metadata)
 }
 
 /// Whether an authorization server will accept an authorization code.

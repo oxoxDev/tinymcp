@@ -4,9 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
+use super::credentials::OAuthCredentialStore;
 use super::types::{OAuthBundle, TokenResponse};
 use crate::error::{Error, Result};
-use super::credentials::OAuthCredentialStore;
 
 /// The reserved credential key holding the refresh bundle.
 ///
@@ -175,17 +175,45 @@ pub(super) async fn post_form(
 
     // The body is read before the status is judged, because a token endpoint's
     // failure body is where it says *why* — `invalid_grant`, `invalid_client`.
-    // Discarding it would leave a caller with a bare status code.
+    // Discarding it would leave a caller with a bare status code; keeping it
+    // whole would keep whatever the server echoed back — see
+    // `oauth_failure_reason`.
     if !status.is_success() {
         return Err(Error::Http {
             endpoint: crate::redact_endpoint(endpoint),
             status: status.as_u16(),
-            body: text,
+            body: oauth_failure_reason(&text),
         });
     }
 
     serde_json::from_str(&text)
         .map_err(|error| Error::malformed(format!("token endpoint replied with non-json: {error}")))
+}
+
+/// The part of an authorization server's failure body that is safe to keep:
+/// the standard OAuth `error` code and `error_description` (RFC 6749 §5.2).
+///
+/// Some servers echo the submitted form — a refresh token, a client secret, an
+/// authorization code — into their error body, and the body reaches logs and
+/// user interfaces through [`Error::Http`]. The two standard members are the
+/// *why* and carry no secret, so they are all that is kept. A body that is not
+/// a JSON object carries no standard reason and is dropped entirely.
+pub(super) fn oauth_failure_reason(body: &str) -> String {
+    let Ok(Value::Object(fields)) = serde_json::from_str::<Value>(body) else {
+        return String::new();
+    };
+    let reason: serde_json::Map<String, Value> = ["error", "error_description"]
+        .into_iter()
+        .filter_map(|key| {
+            let value = fields.get(key)?.as_str()?;
+            Some((key.to_string(), Value::String(value.to_string())))
+        })
+        .collect();
+    if reason.is_empty() {
+        String::new()
+    } else {
+        Value::Object(reason).to_string()
+    }
 }
 
 /// The current time in Unix seconds.

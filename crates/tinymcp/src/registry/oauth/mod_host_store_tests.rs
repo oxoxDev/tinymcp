@@ -72,7 +72,10 @@ async fn a_host_store_backs_a_whole_sign_in() {
         .await
         .expect("begin");
     let state = authorize_param(&url, "state").unwrap();
-    let server_id = flow.complete(&host, &state, "the-code").await.expect("complete");
+    let server_id = flow
+        .complete(&host, &state, "the-code")
+        .await
+        .expect("complete");
 
     assert_eq!(server_id, TENANT_SERVER);
     assert_eq!(
@@ -162,8 +165,119 @@ async fn a_host_store_failure_is_reported_as_a_store_error() {
 #[tokio::test]
 async fn a_host_store_with_no_remote_endpoint_cannot_be_signed_in_to() {
     let error = flow()
-        .begin(&HostSecrets::default(), TENANT_SERVER, "https://host.test/cb")
+        .begin(
+            &HostSecrets::default(),
+            TENANT_SERVER,
+            "https://host.test/cb",
+        )
         .await
         .expect_err("no endpoint");
-    assert!(matches!(error, Error::MalformedResponse { .. }), "{error:?}");
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Detection agrees with what `begin` can drive
+// ---------------------------------------------------------------------------
+
+/// Slack's MCP endpoint challenges properly and advertises an authorize
+/// endpoint, but no registration endpoint — so there is no client to mint and
+/// `begin` refuses. Offering a Sign in button for it is offering a dead end;
+/// detection has to answer "paste a token" instead.
+#[tokio::test]
+async fn detection_offers_a_token_when_there_is_no_dynamic_registration() {
+    let (endpoint, state) = authority_with_challenge().await;
+    state.without_registration.store(true, Ordering::SeqCst);
+    let store = store_with_remote(&endpoint);
+    let flow = flow();
+
+    let detection = flow.detect(&store, "srv-1").await.expect("detect");
+
+    assert_eq!(detection.kind, AuthKind::Token, "{detection:?}");
+    assert!(
+        flow.begin(&store, "srv-1", "http://127.0.0.1:1/cb")
+            .await
+            .is_err(),
+        "begin refuses the same server, so detection must not offer it"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// A failure body never carries what was submitted
+// ---------------------------------------------------------------------------
+
+/// A refresh whose token endpoint fails with `reply`, echoing the form back.
+async fn rejected_refresh(reply: String) -> Error {
+    let app = Router::new().route(
+        "/token",
+        post(move |body: String| {
+            let reply = reply.replace("{form}", &body);
+            async move { (AxumStatus::BAD_REQUEST, reply) }
+        }),
+    );
+    let base = serve(app).await;
+    let store = store_with_remote("https://example.test/mcp");
+    store_expired_bundle(&store, &format!("{base}/token"), Some("r1-secret-refresh"));
+    refresh_if_expired(&store, &reqwest::Client::new(), "srv-1")
+        .await
+        .expect_err("a rejected refresh")
+}
+
+/// Some token endpoints echo the submitted form in their error body — the
+/// refresh token, the client secret. That body reaches logs and user
+/// interfaces through the error, so only the standard OAuth `error` and
+/// `error_description` survive: they are the *why*, and carry no secret.
+#[tokio::test]
+async fn a_token_endpoint_failure_keeps_the_reason_but_not_an_echo() {
+    let error = rejected_refresh(
+        json!({
+            "error": "invalid_grant",
+            "error_description": "refresh token revoked",
+            "request": "{form}",
+        })
+        .to_string(),
+    )
+    .await;
+
+    let Error::Http { body, .. } = &error else {
+        panic!("expected an http error, got {error:?}");
+    };
+    assert!(body.contains("invalid_grant"), "{body}");
+    assert!(body.contains("refresh token revoked"), "{body}");
+    assert!(!body.contains("r1-secret-refresh"), "{body}");
+    assert!(!body.contains("sec-1"), "{body}");
+}
+
+#[tokio::test]
+async fn a_non_json_token_endpoint_failure_is_not_echoed() {
+    let error = rejected_refresh("you sent: {form}".to_string()).await;
+    let rendered = error.to_string();
+    assert!(!rendered.contains("r1-secret-refresh"), "{rendered}");
+    assert!(!rendered.contains("sec-1"), "{rendered}");
+}
+
+// ---------------------------------------------------------------------------
+// Refusing internal endpoints a hostile server advertises
+// ---------------------------------------------------------------------------
+
+/// The authorization server's endpoints come from the server being signed in
+/// to, and the flow POSTs to them from the host. A host serving untrusted
+/// servers opts into refusing internal targets; the loopback authority here is
+/// exactly such a target, so nothing may be registered with it.
+#[tokio::test]
+async fn a_guarded_flow_refuses_an_internal_authorization_server() {
+    let (endpoint, state) = authority_with_challenge().await;
+    let store = store_with_remote(&endpoint);
+    let flow = flow().require_public_endpoints();
+
+    let error = flow
+        .begin(&store, "srv-1", "https://host.test/cb")
+        .await
+        .expect_err("a loopback authorization server");
+
+    assert!(error.to_string().contains("https"), "{error}");
+    assert_eq!(state.registrations.load(Ordering::SeqCst), 0);
+    assert_eq!(flow.pending_count(), 0);
 }
