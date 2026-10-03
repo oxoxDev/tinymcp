@@ -406,7 +406,7 @@ impl Error {
             Self::ClientBuild { .. } => errors::CLIENT_BUILD,
             Self::Serialization { .. } => errors::SERIALIZATION,
             Self::Store { .. } => errors::STORE,
-            Self::CredentialStore { .. } => errors::STORE,
+            Self::CredentialStore { .. } => errors::CREDENTIAL_STORE,
             Self::StoreIo { .. } => errors::STORE_IO,
             Self::Bus { .. } => errors::BUS,
             Self::InvalidArgument { .. } => errors::INVALID_ARGUMENT,

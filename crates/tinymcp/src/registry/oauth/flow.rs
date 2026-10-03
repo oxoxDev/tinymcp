@@ -80,7 +80,7 @@ impl OAuthFlow {
     /// `https` or that resolve to an internal address.
     ///
     /// Those endpoints are advertised by the server being signed in to and
-    /// POSTed to from the host, so a host connecting to servers it does not
+    /// `POST`ed to from the host, so a host connecting to servers it does not
     /// trust turns this on. Off by default: a desktop host signs in to loopback
     /// development servers. The token endpoint is re-checked when a code is
     /// exchanged, so a host re-pointed between `begin` and `complete` is

@@ -1,4 +1,4 @@
-//! The flow backed by a host's own secret store rather than the SQLite
+//! The flow backed by a host's own secret store rather than the `SQLite`
 //! [`Store`]: what a multi-tenant host needs to keep PKCE, registration and
 //! refresh state in its own per-tenant secrets.
 
@@ -158,7 +158,7 @@ async fn a_host_store_failure_is_reported_as_a_store_error() {
         .expect_err("a sealed vault");
 
     assert!(matches!(error, Error::CredentialStore { .. }), "{error:?}");
-    assert_eq!(error.wire_name(), tinymcp_bus::errors::STORE);
+    assert_eq!(error.wire_name(), tinymcp_bus::errors::CREDENTIAL_STORE);
     assert!(error.to_string().contains("sealed"), "{error}");
 }
 

@@ -67,6 +67,8 @@ pub const CLIENT_BUILD: &str = "ai.tinyhumans.tinymcp.Error.ClientBuild";
 pub const SERIALIZATION: &str = "ai.tinyhumans.tinymcp.Error.Serialization";
 /// The installed-server store could not do what was asked of it.
 pub const STORE: &str = "ai.tinyhumans.tinymcp.Error.Store";
+/// A host-supplied credential store could not do what was asked of it.
+pub const CREDENTIAL_STORE: &str = "ai.tinyhumans.tinymcp.Error.CredentialStore";
 /// The store's directory or file could not be reached.
 pub const STORE_IO: &str = "ai.tinyhumans.tinymcp.Error.StoreIo";
 /// The module could not do something it needed of the bus, such as serving a
@@ -103,6 +105,7 @@ pub const ALL: &[&str] = &[
     CLIENT_BUILD,
     SERIALIZATION,
     STORE,
+    CREDENTIAL_STORE,
     STORE_IO,
     BUS,
     INVALID_ARGUMENT,
