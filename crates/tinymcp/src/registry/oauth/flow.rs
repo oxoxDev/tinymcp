@@ -9,12 +9,13 @@ use reqwest::Url;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use super::tokens::{persist, post_form};
+use super::credentials::OAuthCredentialStore;
+use super::endpoint_guard::{guard_endpoint, guarded_client};
+use super::tokens::{oauth_failure_reason, persist, post_form};
 use super::types::{AuthDetection, PendingAuthorization, TokenResponse};
 use crate::error::{Error, Result};
-use crate::registry::Store;
 use crate::transport::http::McpHttpClient;
-use tinymcp_bus::{McpProxyConfig, Transport};
+use tinymcp_bus::McpProxyConfig;
 
 /// URL-safe base64 without padding, which is what OAuth uses throughout.
 const B64: base64::engine::general_purpose::GeneralPurpose =
@@ -48,8 +49,10 @@ const CLIENT_NAME: &str = "TinyMCP";
 #[derive(Debug)]
 pub struct OAuthFlow {
     http: reqwest::Client,
+    no_redirect_http: reqwest::Client,
     proxy: Option<McpProxyConfig>,
     pending: Mutex<HashMap<String, PendingAuthorization>>,
+    public_endpoints_only: bool,
 }
 
 impl OAuthFlow {
@@ -65,26 +68,57 @@ impl OAuthFlow {
             .map_err(|source| Error::ClientBuild {
                 source: Box::new(source.without_url()),
             })?;
+        let no_redirect_http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(AUTH_SERVER_TIMEOUT_SECS))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|source| Error::ClientBuild {
+                source: Box::new(source.without_url()),
+            })?;
 
         Ok(Self {
             http,
+            no_redirect_http,
             proxy,
             pending: Mutex::new(HashMap::new()),
+            public_endpoints_only: false,
         })
+    }
+
+    /// Refuses authorization, registration and token endpoints that are not
+    /// `https` or that resolve to an internal address.
+    ///
+    /// Those endpoints are advertised by the server being signed in to and
+    /// `POST`ed to from the host, so a host connecting to servers it does not
+    /// trust turns this on. Off by default: a desktop host signs in to loopback
+    /// development servers. The token endpoint is re-checked when a code is
+    /// exchanged, so a host re-pointed between `begin` and `complete` is
+    /// refused too. [`refresh_if_expired`](super::refresh_if_expired) does not
+    /// re-check: it only ever posts to an endpoint this guard already passed.
+    #[must_use]
+    pub fn require_public_endpoints(mut self) -> Self {
+        self.public_endpoints_only = true;
+        self
     }
 
     /// The HTTP client this flow uses, for the refresh path.
     #[must_use]
     pub fn http(&self) -> &reqwest::Client {
-        &self.http
+        if self.public_endpoints_only {
+            &self.no_redirect_http
+        } else {
+            &self.http
+        }
     }
 
     /// Classifies what a server wants before it will talk.
     ///
     /// Decided by probing, not by reading registry metadata, which is often
     /// wrong about this. A server that answers without a challenge is open; one
-    /// that challenges with a usable authorization endpoint wants a browser
-    /// sign-in; anything else wants a static token.
+    /// that challenges with an authorization server [`Self::begin`] can drive
+    /// (authorize, token and dynamic-registration endpoints, and the
+    /// authorization-code grant) wants a browser sign-in; anything else wants a
+    /// static token.
     ///
     /// A discovery failure reports a static token rather than an error. The
     /// user can paste one and find out, which beats being blocked by a probe
@@ -96,8 +130,11 @@ impl OAuthFlow {
     /// [`Error::Store`] when it cannot be read. A store failure is *not*
     /// collapsed into "open": reporting a server as needing nothing when the
     /// lookup failed would show the user a state that was never checked.
-    pub async fn detect(&self, store: &Store, server_id: &str) -> Result<AuthDetection> {
-        let Some(url) = Self::remote_url(store, server_id)? else {
+    pub async fn detect<S>(&self, store: &S, server_id: &str) -> Result<AuthDetection>
+    where
+        S: OAuthCredentialStore + ?Sized,
+    {
+        let Some(url) = store.remote_url(server_id).await? else {
             // A subprocess install has no HTTP authorization to discover.
             return Ok(AuthDetection::open());
         };
@@ -112,10 +149,7 @@ impl OAuthFlow {
             Ok(Some(context)) => Ok(context
                 .authorization_server_metadata
                 .iter()
-                .find(|metadata| {
-                    metadata.authorization_endpoint.is_some()
-                        && supports_authorization_code(metadata)
-                })
+                .find(|metadata| can_drive_sign_in(metadata))
                 .and_then(|metadata| {
                     metadata.authorization_endpoint.clone().map(|endpoint| {
                         AuthDetection::oauth(endpoint, metadata.grant_types_supported.clone())
@@ -144,13 +178,13 @@ impl OAuthFlow {
     /// offers everything the flow needs, [`Error::MalformedResponse`] when
     /// registration answers with something unusable, plus whatever the
     /// transport returns.
-    pub async fn begin(
-        &self,
-        store: &Store,
-        server_id: &str,
-        redirect_uri: &str,
-    ) -> Result<String> {
-        let url = Self::remote_url(store, server_id)?
+    pub async fn begin<S>(&self, store: &S, server_id: &str, redirect_uri: &str) -> Result<String>
+    where
+        S: OAuthCredentialStore + ?Sized,
+    {
+        let url = store
+            .remote_url(server_id)
+            .await?
             .ok_or_else(|| Error::malformed("oauth applies only to http-remote servers"))?;
 
         let client = McpHttpClient::builder(url.clone())
@@ -168,12 +202,7 @@ impl OAuthFlow {
         let metadata = context
             .authorization_server_metadata
             .iter()
-            .find(|metadata| {
-                metadata.authorization_endpoint.is_some()
-                    && metadata.token_endpoint.is_some()
-                    && metadata.registration_endpoint.is_some()
-                    && supports_authorization_code(metadata)
-            })
+            .find(|metadata| can_drive_sign_in(metadata))
             .ok_or_else(|| Error::AuthDiscovery {
                 detail: "no advertised authorization server offers an authorize endpoint, a token \
                          endpoint, and dynamic client registration together"
@@ -192,8 +221,19 @@ impl OAuthFlow {
             ));
         };
 
+        let registration_http = self
+            .registration_client(
+                &authorization_endpoint,
+                &token_endpoint,
+                &registration_endpoint,
+            )
+            .await?;
         let (client_id, client_secret) = self
-            .register_client(&registration_endpoint, redirect_uri)
+            .register_client(
+                registration_http.as_ref().unwrap_or(&self.http),
+                &registration_endpoint,
+                redirect_uri,
+            )
             .await?;
 
         let (code_verifier, code_challenge) = generate_pkce();
@@ -248,7 +288,10 @@ impl OAuthFlow {
     ///
     /// Returns [`Error::MalformedResponse`] when the state is unknown or
     /// expired, plus whatever the token endpoint returns.
-    pub async fn complete(&self, store: &Store, state: &str, code: &str) -> Result<String> {
+    pub async fn complete<S>(&self, store: &S, state: &str, code: &str) -> Result<String>
+    where
+        S: OAuthCredentialStore + ?Sized,
+    {
         let pending = {
             let mut pending = self.pending.lock();
             prune_expired(&mut pending);
@@ -267,9 +310,10 @@ impl OAuthFlow {
             form.push(("client_secret", secret));
         }
 
-        let body = post_form(&self.http, &pending.token_endpoint, &form).await?;
+        let guarded_http = self.token_client(&pending.token_endpoint).await?;
+        let http = guarded_http.as_ref().unwrap_or(&self.http);
+        let body = post_form(http, &pending.token_endpoint, &form).await?;
         let tokens = TokenResponse::parse(&body)?;
-
         persist(
             store,
             &pending.server_id,
@@ -277,13 +321,26 @@ impl OAuthFlow {
             pending.client_secret.as_deref(),
             &pending.token_endpoint,
             &tokens,
-        )?;
+        )
+        .await?;
 
         tracing::info!(
             server_id = %pending.server_id,
             "completed an oauth authorization and stored the token"
         );
         Ok(pending.server_id)
+    }
+
+    /// The server a parked authorization is for, without consuming it.
+    ///
+    /// A browser redirect carries no session, so a host keeping credentials
+    /// per tenant learns which store to [`complete`](Self::complete) into from
+    /// the returned `state` alone. `None` when the state is unknown or expired.
+    #[must_use]
+    pub fn pending_server(&self, state: &str) -> Option<String> {
+        let mut pending = self.pending.lock();
+        prune_expired(&mut pending);
+        pending.get(state).map(|parked| parked.server_id.clone())
     }
 
     /// How many authorizations are parked. For tests and diagnostics.
@@ -294,6 +351,34 @@ impl OAuthFlow {
         pending.len()
     }
 
+    pub(super) async fn registration_client(
+        &self,
+        authorization_endpoint: &str,
+        token_endpoint: &str,
+        registration_endpoint: &str,
+    ) -> Result<Option<reqwest::Client>> {
+        if self.public_endpoints_only {
+            guard_endpoint(authorization_endpoint, "authorization").await?;
+            guard_endpoint(token_endpoint, "token").await?;
+            Ok(Some(
+                guarded_client(registration_endpoint, "registration").await?,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(super) async fn token_client(
+        &self,
+        token_endpoint: &str,
+    ) -> Result<Option<reqwest::Client>> {
+        if self.public_endpoints_only {
+            Ok(Some(guarded_client(token_endpoint, "token").await?))
+        } else {
+            Ok(None)
+        }
+    }
+
     /// Registers a client dynamically, per RFC 7591.
     ///
     /// A confidential client is requested, and the secret is kept when one is
@@ -301,6 +386,7 @@ impl OAuthFlow {
     /// token exchange then fails without it.
     async fn register_client(
         &self,
+        http: &reqwest::Client,
         registration_endpoint: &str,
         redirect_uri: &str,
     ) -> Result<(String, Option<String>)> {
@@ -312,8 +398,7 @@ impl OAuthFlow {
             "token_endpoint_auth_method": "client_secret_post",
         });
 
-        let response = self
-            .http
+        let response = http
             .post(registration_endpoint)
             .json(&body)
             .send()
@@ -330,7 +415,7 @@ impl OAuthFlow {
             return Err(Error::Http {
                 endpoint: crate::redact_endpoint(registration_endpoint),
                 status: status.as_u16(),
-                body: text,
+                body: oauth_failure_reason(&text),
             });
         }
 
@@ -353,15 +438,21 @@ impl OAuthFlow {
 
         Ok((client_id, client_secret))
     }
+}
 
-    /// The endpoint of an HTTP-remote install, or `None` for a subprocess one.
-    fn remote_url(store: &Store, server_id: &str) -> Result<Option<String>> {
-        let server = store.get_server(server_id)?;
-        Ok(match server.transport {
-            Transport::HttpRemote { ref url } if !url.is_empty() => Some(url.clone()),
-            _ => None,
-        })
-    }
+/// Whether this flow can run a sign-in against an authorization server: it
+/// advertises an authorize endpoint, a token endpoint and dynamic client
+/// registration, and accepts an authorization code.
+///
+/// [`OAuthFlow::detect`] and [`OAuthFlow::begin`] both ask this one question,
+/// so detection never offers a sign-in that `begin` would then refuse — a
+/// server with no registration endpoint (Slack's, for one) reads as wanting a
+/// static token, not as a Sign in button that leads nowhere.
+fn can_drive_sign_in(metadata: &tinymcp_bus::AuthorizationServerMetadata) -> bool {
+    metadata.authorization_endpoint.is_some()
+        && metadata.token_endpoint.is_some()
+        && metadata.registration_endpoint.is_some()
+        && supports_authorization_code(metadata)
 }
 
 /// Whether an authorization server will accept an authorization code.

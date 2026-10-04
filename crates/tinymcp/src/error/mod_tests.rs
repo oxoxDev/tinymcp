@@ -38,6 +38,10 @@ fn assorted_other_errors() -> Vec<Error> {
         Error::UnsupportedProtocolVersion {
             version: "1999-01-01".into(),
         },
+        Error::CredentialStore {
+            action: "writing credentials".into(),
+            detail: "the vault is sealed".into(),
+        },
         Error::MalformedResponse {
             detail: "no result member".into(),
         },

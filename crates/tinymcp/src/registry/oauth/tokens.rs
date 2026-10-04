@@ -4,9 +4,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
+use super::credentials::OAuthCredentialStore;
 use super::types::{OAuthBundle, TokenResponse};
 use crate::error::{Error, Result};
-use crate::registry::Store;
 
 /// The reserved credential key holding the refresh bundle.
 ///
@@ -46,12 +46,15 @@ const DEFAULT_TOKEN_LIFETIME_SECS: u64 = 3600;
 /// or the token endpoint answers with something unusable, [`Error::Http`] when
 /// it answers with a failure status, and [`Error::Transport`] when it cannot be
 /// reached.
-pub async fn refresh_if_expired(
-    store: &Store,
+pub async fn refresh_if_expired<S>(
+    store: &S,
     http: &reqwest::Client,
     server_id: &str,
-) -> Result<bool> {
-    let env = store.load_env_values(server_id)?;
+) -> Result<bool>
+where
+    S: OAuthCredentialStore + ?Sized,
+{
+    let env = store.load_credentials(server_id).await?;
     let Some(raw_bundle) = env.get(OAUTH_BUNDLE_KEY) else {
         return Ok(false);
     };
@@ -96,7 +99,8 @@ pub async fn refresh_if_expired(
         bundle.client_secret.as_deref(),
         &bundle.token_endpoint,
         &tokens,
-    )?;
+    )
+    .await?;
 
     tracing::info!(server_id, "refreshed an expired access token");
     Ok(true)
@@ -111,15 +115,18 @@ pub async fn refresh_if_expired(
 /// # Errors
 ///
 /// Returns [`Error::Serialization`] when the bundle cannot be encoded, and
-/// [`Error::Store`] when it cannot be written.
-pub(super) fn persist(
-    store: &Store,
+/// whatever the store reports when it cannot be read or written.
+pub(super) async fn persist<S>(
+    store: &S,
     server_id: &str,
     client_id: &str,
     client_secret: Option<&str>,
     token_endpoint: &str,
     tokens: &TokenResponse,
-) -> Result<()> {
+) -> Result<()>
+where
+    S: OAuthCredentialStore + ?Sized,
+{
     let bundle = OAuthBundle {
         refresh_token: tokens.refresh_token.clone(),
         client_id: client_id.to_string(),
@@ -128,7 +135,7 @@ pub(super) fn persist(
         expires_at: now_unix() + tokens.expires_in.unwrap_or(DEFAULT_TOKEN_LIFETIME_SECS),
     };
 
-    let mut env = store.load_env_values(server_id)?;
+    let mut env = store.load_credentials(server_id).await?;
     env.insert(
         ACCESS_TOKEN_KEY.to_string(),
         format!("Bearer {}", tokens.access_token),
@@ -138,14 +145,7 @@ pub(super) fn persist(
         serde_json::to_string(&bundle)?,
     );
 
-    store.set_env_values(server_id, &env)?;
-
-    // The listing of credential *names* lives on the server row and is what a
-    // caller shows the user, so it has to learn about the two new keys.
-    let names: Vec<String> = env.keys().cloned().collect();
-    store.update_env_keys(server_id, &names)?;
-
-    Ok(())
+    store.store_credentials(server_id, &env).await
 }
 
 /// Posts a form to a token endpoint and returns its JSON body.
@@ -175,17 +175,45 @@ pub(super) async fn post_form(
 
     // The body is read before the status is judged, because a token endpoint's
     // failure body is where it says *why* — `invalid_grant`, `invalid_client`.
-    // Discarding it would leave a caller with a bare status code.
+    // Discarding it would leave a caller with a bare status code; keeping it
+    // whole would keep whatever the server echoed back — see
+    // `oauth_failure_reason`.
     if !status.is_success() {
         return Err(Error::Http {
             endpoint: crate::redact_endpoint(endpoint),
             status: status.as_u16(),
-            body: text,
+            body: oauth_failure_reason(&text),
         });
     }
 
     serde_json::from_str(&text)
         .map_err(|error| Error::malformed(format!("token endpoint replied with non-json: {error}")))
+}
+
+/// The part of an authorization server's failure body that is safe to keep:
+/// the standard OAuth `error` code and `error_description` (RFC 6749 §5.2).
+///
+/// Some servers echo the submitted form — a refresh token, a client secret, an
+/// authorization code — into their error body, and the body reaches logs and
+/// user interfaces through [`Error::Http`]. The two standard members are the
+/// *why* and carry no secret, so they are all that is kept. A body that is not
+/// a JSON object carries no standard reason and is dropped entirely.
+pub(super) fn oauth_failure_reason(body: &str) -> String {
+    let Ok(Value::Object(fields)) = serde_json::from_str::<Value>(body) else {
+        return String::new();
+    };
+    let reason: serde_json::Map<String, Value> = ["error", "error_description"]
+        .into_iter()
+        .filter_map(|key| {
+            let value = fields.get(key)?.as_str()?;
+            Some((key.to_string(), Value::String(value.to_string())))
+        })
+        .collect();
+    if reason.is_empty() {
+        String::new()
+    } else {
+        Value::Object(reason).to_string()
+    }
 }
 
 /// The current time in Unix seconds.
