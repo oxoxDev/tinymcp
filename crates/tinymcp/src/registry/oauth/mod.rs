@@ -33,7 +33,8 @@
 //!
 //! # What is stored, and where
 //!
-//! Storage is an [`OAuthCredentialStore`]: the `SQLite` [`Store`] by default,
+//! Storage is an [`OAuthCredentialStore`]: the `SQLite`
+//! [`crate::registry::Store`] by default,
 //! or a host's own secret store.
 //!
 //! The access token is stored as the server's `Authorization` header value, so

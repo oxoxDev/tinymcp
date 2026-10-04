@@ -4,6 +4,8 @@
 
 use super::*;
 use crate::registry::OAuthCredentialStore;
+use std::io::{Read, Write};
+use std::net::TcpListener;
 
 /// A host's secret store: credentials in a map, keyed by whatever server id
 /// the host chooses — here a tenant-qualified one.
@@ -281,4 +283,31 @@ async fn a_guarded_flow_refuses_an_internal_authorization_server() {
     assert!(error.to_string().contains("https"), "{error}");
     assert_eq!(state.registrations.load(Ordering::SeqCst), 0);
     assert_eq!(flow.pending_count(), 0);
+}
+
+#[tokio::test]
+async fn a_guarded_flow_refresh_client_does_not_follow_redirects() {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("bind listener");
+    let endpoint = format!("http://{}/refresh", listener.local_addr().expect("address"));
+    let server = std::thread::spawn(move || {
+        let (mut socket, _) = listener.accept().expect("accept request");
+        let mut request = [0; 1024];
+        let _ = socket.read(&mut request).expect("read request");
+        socket
+            .write_all(
+                b"HTTP/1.1 302 Found\r\nLocation: /redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )
+            .expect("write redirect");
+    });
+
+    let response = flow()
+        .require_public_endpoints()
+        .http()
+        .get(endpoint)
+        .send()
+        .await
+        .expect("receive redirect response");
+
+    assert_eq!(response.status(), reqwest::StatusCode::FOUND);
+    server.join().expect("server thread");
 }
