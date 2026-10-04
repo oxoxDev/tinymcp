@@ -27,6 +27,7 @@ impl HostSecrets {
     }
 }
 
+#[allow(clippy::unused_async_trait_impl)]
 impl OAuthCredentialStore for HostSecrets {
     async fn remote_url(&self, _server_id: &str) -> crate::Result<Option<String>> {
         Ok(self.url.clone())

@@ -9,7 +9,8 @@
 //! It is off by default because a desktop host legitimately signs in to
 //! loopback development servers.
 
-use std::net::{IpAddr, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
+use std::time::Duration;
 
 use reqwest::Url;
 
@@ -18,14 +19,15 @@ use crate::error::{Error, Result};
 /// Refuses `raw` unless it is `https` and every address its host resolves to
 /// is public. `what` names the endpoint in the error.
 ///
-/// A single blocked record is enough to refuse, which also blunts DNS
-/// rebinding to an internal address. Resolution runs on the blocking pool so a
-/// slow resolver cannot stall the executor.
+/// A single blocked record is enough to refuse. The returned addresses can be
+/// pinned to the HTTP client so the eventual connection uses the vetted result
+/// instead of resolving the name again. Resolution runs on the blocking pool
+/// so a slow resolver cannot stall the executor.
 ///
 /// # Errors
 ///
 /// [`Error::MalformedResponse`] naming the endpoint and why it was refused.
-pub(super) async fn guard_endpoint(raw: &str, what: &str) -> Result<()> {
+pub(super) async fn guard_endpoint(raw: &str, what: &str) -> Result<Vec<SocketAddr>> {
     let refuse = |why: String| Error::malformed(format!("{what} endpoint refused: {why}"));
     let url = Url::parse(raw).map_err(|error| refuse(format!("not a valid url: {error}")))?;
     if url.scheme() != "https" {
@@ -39,13 +41,13 @@ pub(super) async fn guard_endpoint(raw: &str, what: &str) -> Result<()> {
         .to_string();
     let port = url.port_or_known_default().unwrap_or(443);
 
-    let addresses: Vec<IpAddr> = if let Ok(ip) = host.parse::<IpAddr>() {
-        vec![ip]
+    let addresses: Vec<SocketAddr> = if let Ok(ip) = host.parse::<IpAddr>() {
+        vec![SocketAddr::new(ip, port)]
     } else {
         tokio::task::spawn_blocking(move || {
             (host.as_str(), port)
                 .to_socket_addrs()
-                .map(|found| found.map(|addr| addr.ip()).collect())
+                .map(Iterator::collect::<Vec<_>>)
         })
         .await
         .map_err(|error| refuse(format!("resolution did not finish: {error}")))?
@@ -54,10 +56,34 @@ pub(super) async fn guard_endpoint(raw: &str, what: &str) -> Result<()> {
     if addresses.is_empty() {
         return Err(refuse("its host does not resolve".to_string()));
     }
-    if addresses.iter().any(is_blocked_ip) {
+    if addresses.iter().any(|addr| is_blocked_ip(&addr.ip())) {
         return Err(refuse("it resolves to a disallowed address".to_string()));
     }
-    Ok(())
+    Ok(addresses)
+}
+
+/// Builds an HTTP client pinned to the public addresses checked for `raw`.
+/// Redirects are disabled so a validated endpoint cannot replay credentials to
+/// a different, unchecked destination.
+pub(super) async fn guarded_client(raw: &str, what: &str) -> Result<reqwest::Client> {
+    let addresses = guard_endpoint(raw, what).await?;
+    let url = Url::parse(raw)
+        .map_err(|error| Error::malformed(format!("invalid {what} url: {error}")))?;
+    let host = url
+        .host_str()
+        .ok_or_else(|| Error::malformed(format!("{what} endpoint has no host")))?
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    let mut builder = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .connect_timeout(Duration::from_secs(10))
+        .redirect(reqwest::redirect::Policy::none());
+    if host.parse::<IpAddr>().is_err() {
+        builder = builder.resolve_to_addrs(host, &addresses);
+    }
+    builder.build().map_err(|source| Error::ClientBuild {
+        source: Box::new(source.without_url()),
+    })
 }
 
 /// Whether an address is one the flow must never POST OAuth material to:
@@ -74,9 +100,12 @@ pub(super) fn is_blocked_ip(ip: &IpAddr) -> bool {
                 || v4.is_documentation()
                 || v4.is_multicast()
                 || v4.octets()[0] == 0
+                || (v4.octets()[0] == 100 && (v4.octets()[1] & 0xc0) == 64)
+                || (v4.octets()[0] == 198 && (v4.octets()[1] & 0xfe) == 18)
+                || v4.octets()[0] >= 240
         }
         IpAddr::V6(v6) => {
-            if let Some(v4) = v6.to_ipv4_mapped() {
+            if let Some(v4) = v6.to_ipv4() {
                 return is_blocked_ip(&IpAddr::V4(v4));
             }
             v6.is_loopback()
@@ -84,6 +113,8 @@ pub(super) fn is_blocked_ip(ip: &IpAddr) -> bool {
                 || v6.is_multicast()
                 || (v6.segments()[0] & 0xfe00) == 0xfc00
                 || (v6.segments()[0] & 0xffc0) == 0xfe80
+                || (v6.segments()[0] == 0x0064 && v6.segments()[1] == 0xff9b)
+                || (v6.segments()[0] & 0xffc0) == 0xfec0
         }
     }
 }

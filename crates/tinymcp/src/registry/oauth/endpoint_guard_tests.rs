@@ -20,6 +20,11 @@ fn internal_and_special_addresses_are_blocked() {
         "169.254.169.254",
         "0.0.0.0",
         "0.1.2.3",
+        "100.64.0.1",
+        "100.127.255.254",
+        "198.18.0.1",
+        "198.19.255.254",
+        "240.0.0.1",
         "255.255.255.255",
         "192.0.2.1",
         "224.0.0.1",
@@ -28,6 +33,9 @@ fn internal_and_special_addresses_are_blocked() {
         "fd00::1",
         "fe80::1",
         "ff02::1",
+        "64:ff9b::7f00:1",
+        "fec0::1",
+        "::127.0.0.1",
         "::ffff:127.0.0.1",
         "::ffff:169.254.169.254",
     ] {
@@ -42,6 +50,7 @@ fn public_addresses_are_allowed() {
         "1.1.1.1",
         "2606:4700:4700::1111",
         "::ffff:8.8.8.8",
+        "2001:4860:4860::8888",
     ] {
         assert!(!is_blocked_ip(&ip(raw)), "{raw} should be allowed");
     }
@@ -49,9 +58,10 @@ fn public_addresses_are_allowed() {
 
 #[tokio::test]
 async fn a_public_https_literal_passes() {
-    guard_endpoint("https://8.8.8.8/token", "token")
+    let addresses = guard_endpoint("https://8.8.8.8/token", "token")
         .await
         .expect("public https");
+    assert_eq!(addresses[0].ip(), ip("8.8.8.8"));
 }
 
 #[tokio::test]

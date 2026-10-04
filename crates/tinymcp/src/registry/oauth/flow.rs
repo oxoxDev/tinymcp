@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use super::credentials::OAuthCredentialStore;
-use super::endpoint_guard::guard_endpoint;
+use super::endpoint_guard::{guard_endpoint, guarded_client};
 use super::tokens::{oauth_failure_reason, persist, post_form};
 use super::types::{AuthDetection, PendingAuthorization, TokenResponse};
 use crate::error::{Error, Result};
@@ -49,6 +49,7 @@ const CLIENT_NAME: &str = "TinyMCP";
 #[derive(Debug)]
 pub struct OAuthFlow {
     http: reqwest::Client,
+    no_redirect_http: reqwest::Client,
     proxy: Option<McpProxyConfig>,
     pending: Mutex<HashMap<String, PendingAuthorization>>,
     public_endpoints_only: bool,
@@ -67,9 +68,17 @@ impl OAuthFlow {
             .map_err(|source| Error::ClientBuild {
                 source: Box::new(source.without_url()),
             })?;
+        let no_redirect_http = reqwest::Client::builder()
+            .timeout(Duration::from_secs(AUTH_SERVER_TIMEOUT_SECS))
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|source| Error::ClientBuild {
+                source: Box::new(source.without_url()),
+            })?;
 
         Ok(Self {
             http,
+            no_redirect_http,
             proxy,
             pending: Mutex::new(HashMap::new()),
             public_endpoints_only: false,
@@ -95,7 +104,11 @@ impl OAuthFlow {
     /// The HTTP client this flow uses, for the refresh path.
     #[must_use]
     pub fn http(&self) -> &reqwest::Client {
-        &self.http
+        if self.public_endpoints_only {
+            &self.no_redirect_http
+        } else {
+            &self.http
+        }
     }
 
     /// Classifies what a server wants before it will talk.
@@ -211,11 +224,19 @@ impl OAuthFlow {
         if self.public_endpoints_only {
             guard_endpoint(&authorization_endpoint, "authorization").await?;
             guard_endpoint(&token_endpoint, "token").await?;
-            guard_endpoint(&registration_endpoint, "registration").await?;
         }
 
+        let registration_http = if self.public_endpoints_only {
+            Some(guarded_client(&registration_endpoint, "registration").await?)
+        } else {
+            None
+        };
         let (client_id, client_secret) = self
-            .register_client(&registration_endpoint, redirect_uri)
+            .register_client(
+                registration_http.as_ref().unwrap_or(&self.http),
+                &registration_endpoint,
+                redirect_uri,
+            )
             .await?;
 
         let (code_verifier, code_challenge) = generate_pkce();
@@ -293,7 +314,20 @@ impl OAuthFlow {
         }
 
         if self.public_endpoints_only {
-            guard_endpoint(&pending.token_endpoint, "token").await?;
+            let http = guarded_client(&pending.token_endpoint, "token").await?;
+            let body = post_form(&http, &pending.token_endpoint, &form).await?;
+            let tokens = TokenResponse::parse(&body)?;
+            persist(
+                store,
+                &pending.server_id,
+                &pending.client_id,
+                pending.client_secret.as_deref(),
+                &pending.token_endpoint,
+                &tokens,
+            )
+            .await?;
+            tracing::info!(server_id = %pending.server_id, "completed an oauth authorization and stored the token");
+            return Ok(pending.server_id);
         }
         let body = post_form(&self.http, &pending.token_endpoint, &form).await?;
         let tokens = TokenResponse::parse(&body)?;
@@ -342,6 +376,7 @@ impl OAuthFlow {
     /// token exchange then fails without it.
     async fn register_client(
         &self,
+        http: &reqwest::Client,
         registration_endpoint: &str,
         redirect_uri: &str,
     ) -> Result<(String, Option<String>)> {
@@ -353,8 +388,7 @@ impl OAuthFlow {
             "token_endpoint_auth_method": "client_secret_post",
         });
 
-        let response = self
-            .http
+        let response = http
             .post(registration_endpoint)
             .json(&body)
             .send()
