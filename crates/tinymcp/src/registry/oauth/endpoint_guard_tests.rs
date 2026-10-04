@@ -4,7 +4,7 @@
 
 use std::net::IpAddr;
 
-use super::{guard_endpoint, guarded_client, is_blocked_ip};
+use super::{client_pinned_to, guard_endpoint, guarded_client, is_blocked_ip};
 
 fn ip(raw: &str) -> IpAddr {
     raw.parse().unwrap()
@@ -69,6 +69,12 @@ async fn a_public_https_literal_builds_a_pinned_client() {
     guarded_client("https://8.8.8.8/token", "token")
         .await
         .expect("pinned public https client");
+}
+
+#[test]
+fn a_hostname_client_pins_the_addresses_that_were_checked() {
+    let addresses = ["8.8.8.8:443".parse().expect("socket address")];
+    client_pinned_to("public.example", &addresses).expect("pinned hostname client");
 }
 
 #[tokio::test]

@@ -311,3 +311,40 @@ async fn a_guarded_flow_refresh_client_does_not_follow_redirects() {
     assert_eq!(response.status(), reqwest::StatusCode::FOUND);
     server.join().expect("server thread");
 }
+
+#[tokio::test]
+async fn public_endpoint_clients_validate_and_pin_registration_and_token_hosts() {
+    let flow = flow().require_public_endpoints();
+    let registration = flow
+        .registration_client(
+            "https://8.8.8.8/authorize",
+            "https://1.1.1.1/token",
+            "https://9.9.9.9/register",
+        )
+        .await
+        .expect("validate public endpoints");
+    assert!(registration.is_some());
+    assert!(
+        flow.token_client("https://8.8.8.8/token")
+            .await
+            .expect("build token client")
+            .is_some()
+    );
+}
+
+#[tokio::test]
+async fn desktop_flow_keeps_the_default_clients() {
+    let flow = flow();
+    assert!(
+        flow.registration_client("not a url", "not a url", "not a url")
+            .await
+            .expect("desktop flow skips public endpoint checks")
+            .is_none()
+    );
+    assert!(
+        flow.token_client("not a url")
+            .await
+            .expect("desktop flow skips public endpoint checks")
+            .is_none()
+    );
+}

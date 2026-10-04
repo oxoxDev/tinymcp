@@ -74,12 +74,16 @@ pub(super) async fn guarded_client(raw: &str, what: &str) -> Result<reqwest::Cli
         .ok_or_else(|| Error::malformed(format!("{what} endpoint has no host")))?
         .trim_start_matches('[')
         .trim_end_matches(']');
+    client_pinned_to(host, &addresses)
+}
+
+fn client_pinned_to(host: &str, addresses: &[SocketAddr]) -> Result<reqwest::Client> {
     let mut builder = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .connect_timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none());
     if host.parse::<IpAddr>().is_err() {
-        builder = builder.resolve_to_addrs(host, &addresses);
+        builder = builder.resolve_to_addrs(host, addresses);
     }
     builder.build().map_err(|source| Error::ClientBuild {
         source: Box::new(source.without_url()),

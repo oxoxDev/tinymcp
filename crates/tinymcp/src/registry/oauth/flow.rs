@@ -221,16 +221,13 @@ impl OAuthFlow {
             ));
         };
 
-        if self.public_endpoints_only {
-            guard_endpoint(&authorization_endpoint, "authorization").await?;
-            guard_endpoint(&token_endpoint, "token").await?;
-        }
-
-        let registration_http = if self.public_endpoints_only {
-            Some(guarded_client(&registration_endpoint, "registration").await?)
-        } else {
-            None
-        };
+        let registration_http = self
+            .registration_client(
+                &authorization_endpoint,
+                &token_endpoint,
+                &registration_endpoint,
+            )
+            .await?;
         let (client_id, client_secret) = self
             .register_client(
                 registration_http.as_ref().unwrap_or(&self.http),
@@ -313,25 +310,10 @@ impl OAuthFlow {
             form.push(("client_secret", secret));
         }
 
-        if self.public_endpoints_only {
-            let http = guarded_client(&pending.token_endpoint, "token").await?;
-            let body = post_form(&http, &pending.token_endpoint, &form).await?;
-            let tokens = TokenResponse::parse(&body)?;
-            persist(
-                store,
-                &pending.server_id,
-                &pending.client_id,
-                pending.client_secret.as_deref(),
-                &pending.token_endpoint,
-                &tokens,
-            )
-            .await?;
-            tracing::info!(server_id = %pending.server_id, "completed an oauth authorization and stored the token");
-            return Ok(pending.server_id);
-        }
-        let body = post_form(&self.http, &pending.token_endpoint, &form).await?;
+        let guarded_http = self.token_client(&pending.token_endpoint).await?;
+        let http = guarded_http.as_ref().unwrap_or(&self.http);
+        let body = post_form(http, &pending.token_endpoint, &form).await?;
         let tokens = TokenResponse::parse(&body)?;
-
         persist(
             store,
             &pending.server_id,
@@ -367,6 +349,34 @@ impl OAuthFlow {
         let mut pending = self.pending.lock();
         prune_expired(&mut pending);
         pending.len()
+    }
+
+    pub(super) async fn registration_client(
+        &self,
+        authorization_endpoint: &str,
+        token_endpoint: &str,
+        registration_endpoint: &str,
+    ) -> Result<Option<reqwest::Client>> {
+        if self.public_endpoints_only {
+            guard_endpoint(authorization_endpoint, "authorization").await?;
+            guard_endpoint(token_endpoint, "token").await?;
+            Ok(Some(
+                guarded_client(registration_endpoint, "registration").await?,
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub(super) async fn token_client(
+        &self,
+        token_endpoint: &str,
+    ) -> Result<Option<reqwest::Client>> {
+        if self.public_endpoints_only {
+            Ok(Some(guarded_client(token_endpoint, "token").await?))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Registers a client dynamically, per RFC 7591.
