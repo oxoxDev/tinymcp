@@ -9,6 +9,14 @@
 //!
 //! What stays with the host is the decision to allow a call at all:
 //! [`McpCallTool`] takes an [`ActGate`] it runs before anything is sent.
+//!
+//! Every result [`McpCallTool`] returns once the act gate has allowed the call
+//! and it has a server, a tool and an `arguments` value carries a
+//! [`McpCallOutcome`] as its metadata. A call missing one of those, or refused
+//! by the gate, fails before any result exists and carries none. The outcome
+//! says whether the server answered and, when it did not, the error's wire
+//! name and whether it was a 401 that advertised OAuth. The model never sees it; a host reads it to meter calls
+//! and to surface failures without parsing the result text.
 
 // The tool names and descriptions are fixed strings, and the rendered Markdown
 // is built a line at a time; both are clearer as written.
@@ -18,7 +26,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tinymcp_bus::McpAuthConfig;
+use tinymcp_bus::{McpAuthConfig, McpCallError, McpCallOutcome};
 use tinytools::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
 
 use super::scrub::SecretScrubber;
@@ -296,6 +304,7 @@ impl Tool for McpCallTool {
 
         let server = required_string_arg(&args, "server")?;
         let tool = required_string_arg(&args, "tool")?;
+        let scrubber = SecretScrubber::for_server(&self.registry, &server);
         let arguments = args
             .get("arguments")
             .cloned()
@@ -304,15 +313,32 @@ impl Tool for McpCallTool {
         // cannot hold one is refused naming what arrived.
         let arguments = match tinymcp_bus::normalize_tool_arguments(arguments) {
             Ok(arguments) => Value::Object(arguments),
-            Err(error) => return Ok(ToolResult::error(format!("`arguments`: {error}"))),
+            Err(error) => {
+                let outcome = McpCallOutcome::failed(
+                    &server,
+                    &tool,
+                    McpCallError::new(tinymcp_bus::errors::INVALID_ARGUMENTS),
+                );
+                return Ok(with_outcome(
+                    ToolResult::error(format!("`arguments`: {error}")),
+                    &outcome,
+                ));
+            }
         };
 
-        let scrubber = SecretScrubber::for_server(&self.registry, &server);
-        let mut result = match self.registry.call_tool(&server, &tool, arguments).await {
-            Ok(result) => result.rendered,
+        let (mut result, outcome) = match self.registry.call_tool(&server, &tool, arguments).await {
+            Ok(result) => (result.rendered, McpCallOutcome::answered(&server, &tool)),
             Err(err) => {
-                return Ok(ToolResult::error(
-                    scrubber.scrub(&format!("mcp_call_tool failed: {err}")),
+                let outcome = McpCallOutcome::failed(&server, &tool, call_error(&err));
+                tracing::debug!(
+                    server = %scrubber.scrub(&server),
+                    tool = %scrubber.scrub(&tool),
+                    code = err.wire_name(),
+                    "[mcp] mcp_call_tool failed"
+                );
+                return Ok(with_outcome(
+                    ToolResult::error(scrubber.scrub(&format!("mcp_call_tool failed: {err}"))),
+                    &outcome,
                 ));
             }
         };
@@ -320,12 +346,30 @@ impl Tool for McpCallTool {
         if options.prefer_markdown && result.markdown_formatted.is_none() {
             result.markdown_formatted = Some(result.output());
         }
-        Ok(scrubber.scrub_result(super::tool_result(result)))
+        Ok(with_outcome(
+            scrubber.scrub_result(super::tool_result(result)),
+            &outcome,
+        ))
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
         self.execute_with_options(args, ToolCallOptions::default())
             .await
+    }
+}
+
+/// `result` carrying `outcome` as its host-only metadata.
+fn with_outcome(mut result: ToolResult, outcome: &McpCallOutcome) -> ToolResult {
+    result.metadata = serde_json::to_value(outcome).ok();
+    result
+}
+
+/// The host-facing classification of a failed call.
+fn call_error(error: &crate::Error) -> McpCallError {
+    McpCallError {
+        code: error.wire_name().to_string(),
+        unauthorized: error.is_unauthorized(),
+        advertises_oauth: error.advertises_oauth(),
     }
 }
 
@@ -355,12 +399,29 @@ pub(super) fn endpoint_without_query(endpoint: &str) -> String {
         .to_string()
 }
 
-fn required_string_arg(args: &Value, key: &str) -> anyhow::Result<String> {
+/// A required identifier argument, trimmed and without the markdown a model
+/// wraps it in when it answers in prose (`` `docs` ``, `*docs*`, `` `docs`. ``).
+///
+/// Backticks and asterisks go from either end, and sentence punctuation goes
+/// only when it follows one of them. Every other character, `_` and `.`
+/// included, reaches the server as typed.
+pub(super) fn required_string_arg(args: &Value, key: &str) -> anyhow::Result<String> {
+    let missing = || anyhow::anyhow!("missing required `{key}`");
     let value = args
         .get(key)
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("missing required `{key}`"))?;
-    Ok(value.to_string())
+        .ok_or_else(missing)?;
+    let unpunctuated = value.trim_end_matches(['.', ',', ';', ':', '!']);
+    let fenced = if unpunctuated.ends_with(['`', '*']) {
+        unpunctuated
+    } else {
+        value
+    };
+    let cleaned = fenced.trim_matches(['`', '*']);
+    if cleaned.is_empty() {
+        return Err(missing());
+    }
+    Ok(cleaned.to_string())
 }

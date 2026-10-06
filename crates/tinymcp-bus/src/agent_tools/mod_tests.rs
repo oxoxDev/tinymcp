@@ -309,3 +309,146 @@ fn effects_serialize_in_snake_case() {
         assert_eq!(serde_json::to_value(effect).unwrap(), json!(wire));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Call outcome
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_call_outcome_kind_is_pinned() {
+    assert_eq!(super::MCP_CALL_RESULT_KIND, "mcp_call");
+}
+
+#[test]
+fn an_answered_outcome_pins_its_wire_form_and_omits_the_error() {
+    let outcome = super::McpCallOutcome::answered("docs", "search");
+    let wire = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(
+        wire,
+        json!({ "kind": "mcp_call", "server": "docs", "tool": "search", "ok": true })
+    );
+    assert_eq!(
+        serde_json::from_value::<super::McpCallOutcome>(wire).unwrap(),
+        outcome
+    );
+}
+
+#[test]
+fn a_failed_outcome_pins_its_wire_form_and_round_trips() {
+    let outcome = super::McpCallOutcome::failed(
+        "docs",
+        "search",
+        super::McpCallError {
+            code: crate::errors::UNAUTHORIZED.into(),
+            unauthorized: true,
+            advertises_oauth: true,
+        },
+    );
+    let wire = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(
+        wire,
+        json!({
+            "kind": "mcp_call",
+            "server": "docs",
+            "tool": "search",
+            "ok": false,
+            "error": {
+                "code": "ai.tinyhumans.tinymcp.Error.Unauthorized",
+                "unauthorized": true,
+                "advertises_oauth": true,
+            },
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<super::McpCallOutcome>(wire).unwrap(),
+        outcome
+    );
+}
+
+#[test]
+fn a_plain_error_carries_no_authorization_signal() {
+    let error = super::McpCallError::new(crate::errors::TRANSPORT);
+    assert_eq!(error.code, crate::errors::TRANSPORT);
+    assert!(!error.unauthorized);
+    assert!(!error.advertises_oauth);
+}
+
+#[test]
+fn an_outcome_is_read_back_only_from_metadata_of_its_kind() {
+    let outcome = super::McpCallOutcome::answered("docs", "search");
+    let metadata = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(
+        super::McpCallOutcome::from_metadata(&metadata),
+        Some(outcome)
+    );
+
+    assert_eq!(
+        super::McpCallOutcome::from_metadata(&json!({ "kind": "web_search" })),
+        None
+    );
+    assert_eq!(super::McpCallOutcome::from_metadata(&json!([1, 2])), None);
+    assert_eq!(
+        super::McpCallOutcome::from_metadata(&json!({ "kind": "mcp_call", "ok": "yes" })),
+        None
+    );
+}
+
+#[test]
+fn decoding_an_outcome_rejects_what_the_constructors_never_produce() {
+    let decode = |value: serde_json::Value| serde_json::from_value::<super::McpCallOutcome>(value);
+    let error = json!({ "code": crate::errors::TRANSPORT, "unauthorized": false, "advertises_oauth": false });
+    let base =
+        |ok: bool| json!({ "kind": "mcp_call", "server": "docs", "tool": "search", "ok": ok });
+
+    let mut answered_with_error = base(true);
+    answered_with_error["error"] = error.clone();
+    assert!(decode(answered_with_error).is_err());
+
+    assert!(decode(base(false)).is_err());
+    let mut failed_null_error = base(false);
+    failed_null_error["error"] = serde_json::Value::Null;
+    assert!(decode(failed_null_error).is_err());
+
+    let mut missing_kind = base(true);
+    missing_kind.as_object_mut().unwrap().remove("kind");
+    assert!(decode(missing_kind).is_err());
+    let mut wrong_kind = base(true);
+    wrong_kind["kind"] = json!("web_search");
+    assert!(decode(wrong_kind).is_err());
+
+    assert_eq!(
+        decode(base(true)).unwrap(),
+        super::McpCallOutcome::answered("docs", "search")
+    );
+    let mut failed = base(false);
+    failed["error"] = error;
+    assert_eq!(
+        decode(failed).unwrap(),
+        super::McpCallOutcome::failed(
+            "docs",
+            "search",
+            super::McpCallError::new(crate::errors::TRANSPORT)
+        )
+    );
+}
+
+#[test]
+fn decoding_an_error_rejects_an_oauth_advert_without_a_401() {
+    let decode = |unauthorized: bool, advertises_oauth: bool| {
+        serde_json::from_value::<super::McpCallError>(json!({
+            "code": "x",
+            "unauthorized": unauthorized,
+            "advertises_oauth": advertises_oauth,
+        }))
+    };
+    assert!(decode(false, true).is_err());
+    assert!(decode(false, false).is_ok());
+    assert!(decode(true, false).is_ok());
+    assert!(decode(true, true).is_ok());
+
+    let nested = json!({
+        "kind": "mcp_call", "server": "docs", "tool": "t", "ok": false,
+        "error": { "code": "x", "unauthorized": false, "advertises_oauth": true },
+    });
+    assert_eq!(super::McpCallOutcome::from_metadata(&nested), None);
+}

@@ -125,3 +125,64 @@ fn scrub_value_keeps_both_entries_when_keys_collide_after_redaction() {
     assert_eq!(map.get("[redacted]"), Some(&json!("a")));
     assert_eq!(map.get("[redacted] (2)"), Some(&json!("b")));
 }
+
+#[test]
+fn extra_secrets_are_redacted_as_typed_and_url_encoded() {
+    let scrubber = SecretScrubber::new(&McpAuthConfig::None, "https://example.com/mcp")
+        .with_secrets(["host token/1".to_string(), "   ".to_string()]);
+    assert_eq!(
+        scrubber.scrub("a host token/1 b host%20token%2F1 c"),
+        "a [redacted] b [redacted] c"
+    );
+    assert_eq!(scrubber.secrets.len(), 2);
+}
+
+#[test]
+fn extra_secrets_join_the_configured_ones_longest_first() {
+    let scrubber = SecretScrubber::new(
+        &McpAuthConfig::BearerToken {
+            token: "configured-token".into(),
+        },
+        "https://example.com/mcp",
+    )
+    .with_secrets(["configured-token-extended".to_string()]);
+    assert_eq!(
+        scrubber.scrub("configured-token-extended and configured-token"),
+        "[redacted] and [redacted]"
+    );
+    let result = scrubber.scrub_result(tinytools::ToolResult::json(
+        json!({ "echo": "configured-token-extended" }),
+    ));
+    assert!(!format!("{:?}", result.content).contains("configured-token"));
+}
+
+#[test]
+fn a_short_extra_secret_is_redacted_inside_larger_text() {
+    let scrubber = SecretScrubber::new(&McpAuthConfig::None, "https://example.com/mcp")
+        .with_secrets(["k9".to_string()]);
+    assert_eq!(
+        scrubber.scrub("token=xk9y and k9"),
+        "token=x[redacted]y and [redacted]"
+    );
+    let mut value = json!({ "k9": "a", "tool_k9x": "b" });
+    scrubber.scrub_value(&mut value);
+    let map = value.as_object().unwrap();
+    assert!(map.contains_key("[redacted]"), "{value}");
+    assert!(map.contains_key("tool_k9x"), "{value}");
+}
+
+#[test]
+fn debug_output_never_contains_a_secret() {
+    let scrubber = SecretScrubber::new(
+        &McpAuthConfig::BearerToken {
+            token: "configured-token".into(),
+        },
+        "https://example.com/mcp",
+    )
+    .with_secrets(["host token/1".to_string()]);
+    let shown = format!("{scrubber:?} {scrubber:#?}");
+    assert!(!shown.contains("configured-token"), "{shown}");
+    assert!(!shown.contains("host"), "{shown}");
+    assert!(!shown.contains("%2F"), "{shown}");
+    assert!(shown.contains("SecretScrubber"), "{shown}");
+}

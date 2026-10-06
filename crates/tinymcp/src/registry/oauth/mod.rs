@@ -40,7 +40,7 @@
 //! The access token is stored as the server's `Authorization` header value, so
 //! the ordinary connect path picks it up with no special case. The bookkeeping
 //! needed to mint a new one — refresh token, client credentials, token endpoint,
-//! expiry — is stored beside it under [`OAUTH_BUNDLE_KEY`]. That key begins with
+//! expiry — is an [`OAuthBundle`] stored beside it under [`OAUTH_BUNDLE_KEY`]. That key begins with
 //! two underscores, which is the marker meaning "never send this as a request
 //! header and never show it in a credential list".
 
@@ -51,9 +51,9 @@ pub(crate) mod tokens;
 pub(crate) mod types;
 
 pub use credentials::OAuthCredentialStore;
-pub use flow::OAuthFlow;
+pub use flow::{DEFAULT_CLIENT_NAME, OAuthFlow};
 pub use tokens::{OAUTH_BUNDLE_KEY, refresh_if_expired};
-pub use types::{AuthDetection, AuthKind};
+pub use types::{AuthDetection, AuthKind, OAuthBundle};
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]

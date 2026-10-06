@@ -11,6 +11,11 @@
 //! `arguments` as the object MCP requires, and every path that forwards a call
 //! reads them through it.
 //!
+//! [`McpCallOutcome`] is what a forwarded call reports back to the host, beside
+//! the text the model reads: which server and tool, whether the server
+//! answered, and the classified error when it did not. It travels as a tool
+//! result's metadata tagged with [`MCP_CALL_RESULT_KIND`].
+//!
 //! # Why this is in the contract crate
 //!
 //! A tool's name, description and schema are prompt-cache and transcript
@@ -31,7 +36,9 @@ mod types;
 
 pub use arguments::normalize_tool_arguments;
 pub use registry_tools::{RegistryTool, registry_tool_specs};
-pub use types::{AgentToolEffect, AgentToolSpec, ArgsError};
+pub use types::{
+    AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, McpCallError, McpCallOutcome,
+};
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]

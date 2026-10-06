@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use super::credentials::OAuthCredentialStore;
 use super::endpoint_guard::{guard_endpoint, guarded_client};
-use super::tokens::{oauth_failure_reason, persist, post_form};
+use super::tokens::{due_refresh, exchange_refresh, oauth_failure_reason, persist, post_form};
 use super::types::{AuthDetection, PendingAuthorization, TokenResponse};
 use crate::error::{Error, Result};
 use crate::transport::http::McpHttpClient;
@@ -34,12 +34,12 @@ const AUTH_SERVER_TIMEOUT_SECS: u64 = 20;
 /// How long to wait when probing a server for what it wants.
 const PROBE_TIMEOUT_SECS: u64 = 20;
 
-/// The client name presented during dynamic registration.
+/// The client name presented during dynamic registration when the host sets
+/// none with [`OAuthFlow::with_client_name`].
 ///
-/// A user sees this on the consent screen, so it names the library rather than
-/// leaving it blank. A host that wants its own name there registers its own
-/// client; that is a larger change than a string.
-const CLIENT_NAME: &str = "TinyMCP";
+/// A user sees it on the consent screen, so it names the library rather than
+/// leaving it blank.
+pub const DEFAULT_CLIENT_NAME: &str = "TinyMCP";
 
 /// Runs browser sign-in for HTTP-remote servers.
 ///
@@ -53,6 +53,7 @@ pub struct OAuthFlow {
     proxy: Option<McpProxyConfig>,
     pending: Mutex<HashMap<String, PendingAuthorization>>,
     public_endpoints_only: bool,
+    client_name: String,
 }
 
 impl OAuthFlow {
@@ -82,7 +83,30 @@ impl OAuthFlow {
             proxy,
             pending: Mutex::new(HashMap::new()),
             public_endpoints_only: false,
+            client_name: DEFAULT_CLIENT_NAME.to_string(),
         })
+    }
+
+    /// Sets the client name sent during dynamic registration, which the
+    /// authorization server shows the user on its consent screen.
+    ///
+    /// A blank name keeps [`DEFAULT_CLIENT_NAME`]. Surrounding whitespace is
+    /// trimmed. Clients already registered keep the name they were registered
+    /// with.
+    #[must_use]
+    pub fn with_client_name(mut self, name: impl Into<String>) -> Self {
+        let name = name.into();
+        let name = name.trim();
+        if !name.is_empty() {
+            self.client_name = name.to_string();
+        }
+        self
+    }
+
+    /// The client name sent during dynamic registration.
+    #[must_use]
+    pub fn client_name(&self) -> &str {
+        &self.client_name
     }
 
     /// Refuses authorization, registration and token endpoints that are not
@@ -93,8 +117,9 @@ impl OAuthFlow {
     /// trust turns this on. Off by default: a desktop host signs in to loopback
     /// development servers. The token endpoint is re-checked when a code is
     /// exchanged, so a host re-pointed between `begin` and `complete` is
-    /// refused too. [`refresh_if_expired`](super::refresh_if_expired) does not
-    /// re-check: it only ever posts to an endpoint this guard already passed.
+    /// refused too, and again by [`Self::refresh`] before each refresh. The
+    /// free [`refresh_if_expired`](super::refresh_if_expired) does not
+    /// re-check; a host that turns this on refreshes through [`Self::refresh`].
     #[must_use]
     pub fn require_public_endpoints(mut self) -> Self {
         self.public_endpoints_only = true;
@@ -331,6 +356,33 @@ impl OAuthFlow {
         Ok(pending.server_id)
     }
 
+    /// Mints a new access token when the stored one has expired, or is about
+    /// to, as [`refresh_if_expired`](super::refresh_if_expired) does.
+    ///
+    /// Returns whether a refresh happened. Under
+    /// [`Self::require_public_endpoints`] the bundle's token endpoint is
+    /// checked again, and the refresh posted over a client pinned to the
+    /// addresses it was checked against, so a bundle stored by an older build
+    /// or edited in a host's store cannot aim a refresh at an internal address.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MalformedResponse`] when the stored bundle cannot be
+    /// read, when the token endpoint is refused by the guard, or when it answers
+    /// with something unusable; [`Error::Http`] when it answers with a failure
+    /// status; and [`Error::Transport`] when it cannot be reached.
+    pub async fn refresh<S>(&self, store: &S, server_id: &str) -> Result<bool>
+    where
+        S: OAuthCredentialStore + ?Sized,
+    {
+        let Some(bundle) = due_refresh(store, server_id).await? else {
+            return Ok(false);
+        };
+        let guarded_http = self.token_client(&bundle.token_endpoint).await?;
+        let http = guarded_http.as_ref().unwrap_or(&self.http);
+        exchange_refresh(store, http, server_id, &bundle).await
+    }
+
     /// The server a parked authorization is for, without consuming it.
     ///
     /// A browser redirect carries no session, so a host keeping credentials
@@ -391,7 +443,7 @@ impl OAuthFlow {
         redirect_uri: &str,
     ) -> Result<(String, Option<String>)> {
         let body = json!({
-            "client_name": CLIENT_NAME,
+            "client_name": self.client_name,
             "redirect_uris": [redirect_uri],
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
