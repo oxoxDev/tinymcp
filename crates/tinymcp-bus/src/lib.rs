@@ -25,8 +25,9 @@
 //!   records.
 //! - [`audit`] — the durable record of every write an MCP tool performed.
 //! - [`sanitize`] — the stripping pipeline applied to untrusted remote text.
-//! - [`agent_tools`] — the tool specs a host exposes to a model, and the
-//!   normalization every forwarded call's `arguments` goes through.
+//! - [`agent_tools`] — the tool specs a host exposes to a model, the
+//!   normalization every forwarded call's `arguments` goes through, and the
+//!   structured outcome a forwarded call reports to the host.
 //! - [`version`] — [`CONTRACT_VERSION`] and the [`is_compatible`] bind rule.
 //!
 //! # What is deliberately not here
@@ -129,8 +130,8 @@ pub mod transport;
 pub mod version;
 
 pub use agent_tools::{
-    AgentToolEffect, AgentToolSpec, ArgsError, RegistryTool, normalize_tool_arguments,
-    registry_tool_specs,
+    AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, McpCallError, McpCallOutcome,
+    RegistryTool, normalize_tool_arguments, registry_tool_specs,
 };
 pub use audit::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord,

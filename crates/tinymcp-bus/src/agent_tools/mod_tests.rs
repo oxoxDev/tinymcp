@@ -309,3 +309,86 @@ fn effects_serialize_in_snake_case() {
         assert_eq!(serde_json::to_value(effect).unwrap(), json!(wire));
     }
 }
+
+// ---------------------------------------------------------------------------
+// Call outcome
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_call_outcome_kind_is_pinned() {
+    assert_eq!(super::MCP_CALL_RESULT_KIND, "mcp_call");
+}
+
+#[test]
+fn an_answered_outcome_pins_its_wire_form_and_omits_the_error() {
+    let outcome = super::McpCallOutcome::answered("docs", "search");
+    let wire = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(
+        wire,
+        json!({ "kind": "mcp_call", "server": "docs", "tool": "search", "ok": true })
+    );
+    assert_eq!(
+        serde_json::from_value::<super::McpCallOutcome>(wire).unwrap(),
+        outcome
+    );
+}
+
+#[test]
+fn a_failed_outcome_pins_its_wire_form_and_round_trips() {
+    let outcome = super::McpCallOutcome::failed(
+        "docs",
+        "search",
+        super::McpCallError {
+            code: crate::errors::UNAUTHORIZED.into(),
+            unauthorized: true,
+            advertises_oauth: true,
+        },
+    );
+    let wire = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(
+        wire,
+        json!({
+            "kind": "mcp_call",
+            "server": "docs",
+            "tool": "search",
+            "ok": false,
+            "error": {
+                "code": "ai.tinyhumans.tinymcp.Error.Unauthorized",
+                "unauthorized": true,
+                "advertises_oauth": true,
+            },
+        })
+    );
+    assert_eq!(
+        serde_json::from_value::<super::McpCallOutcome>(wire).unwrap(),
+        outcome
+    );
+}
+
+#[test]
+fn a_plain_error_carries_no_authorization_signal() {
+    let error = super::McpCallError::new(crate::errors::TRANSPORT);
+    assert_eq!(error.code, crate::errors::TRANSPORT);
+    assert!(!error.unauthorized);
+    assert!(!error.advertises_oauth);
+}
+
+#[test]
+fn an_outcome_is_read_back_only_from_metadata_of_its_kind() {
+    let outcome = super::McpCallOutcome::answered("docs", "search");
+    let metadata = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(
+        super::McpCallOutcome::from_metadata(&metadata),
+        Some(outcome)
+    );
+
+    assert_eq!(
+        super::McpCallOutcome::from_metadata(&json!({ "kind": "web_search" })),
+        None
+    );
+    assert_eq!(super::McpCallOutcome::from_metadata(&json!([1, 2])), None);
+    assert_eq!(
+        super::McpCallOutcome::from_metadata(&json!({ "kind": "mcp_call", "ok": "yes" })),
+        None
+    );
+}

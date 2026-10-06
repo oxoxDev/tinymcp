@@ -9,8 +9,9 @@
 
 /// The wire contract version this crate defines.
 ///
-/// 1.1 added agent tools; 1.2 added registry and directory members.
-pub const CONTRACT_VERSION: (u32, u32) = (1, 2);
+/// 1.1 added agent tools; 1.2 added registry and directory members; 1.3 added
+/// the structured call outcome and the credential-store error name.
+pub const CONTRACT_VERSION: (u32, u32) = (1, 3);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module
 /// reporting `module`.
