@@ -431,3 +431,24 @@ fn decoding_an_outcome_rejects_what_the_constructors_never_produce() {
         )
     );
 }
+
+#[test]
+fn decoding_an_error_rejects_an_oauth_advert_without_a_401() {
+    let decode = |unauthorized: bool, advertises_oauth: bool| {
+        serde_json::from_value::<super::McpCallError>(json!({
+            "code": "x",
+            "unauthorized": unauthorized,
+            "advertises_oauth": advertises_oauth,
+        }))
+    };
+    assert!(decode(false, true).is_err());
+    assert!(decode(false, false).is_ok());
+    assert!(decode(true, false).is_ok());
+    assert!(decode(true, true).is_ok());
+
+    let nested = json!({
+        "kind": "mcp_call", "server": "docs", "tool": "t", "ok": false,
+        "error": { "code": "x", "unauthorized": false, "advertises_oauth": true },
+    });
+    assert_eq!(super::McpCallOutcome::from_metadata(&nested), None);
+}

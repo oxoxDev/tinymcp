@@ -187,7 +187,10 @@ impl TryFrom<McpCallOutcomeWire> for McpCallOutcome {
 }
 
 /// Why an MCP call failed, classified for a host.
+///
+/// Decoding rejects `advertises_oauth: true` without `unauthorized: true`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "McpCallErrorWire")]
 pub struct McpCallError {
     /// The error's wire name: one of the constants in [`crate::errors`].
     pub code: String,
@@ -196,6 +199,28 @@ pub struct McpCallError {
     /// Whether that 401 advertised OAuth, so the host offers a sign-in rather
     /// than a token field. Always `false` when `unauthorized` is `false`.
     pub advertises_oauth: bool,
+}
+
+#[derive(Deserialize)]
+struct McpCallErrorWire {
+    code: String,
+    unauthorized: bool,
+    advertises_oauth: bool,
+}
+
+impl TryFrom<McpCallErrorWire> for McpCallError {
+    type Error = &'static str;
+
+    fn try_from(wire: McpCallErrorWire) -> Result<Self, Self::Error> {
+        if wire.advertises_oauth && !wire.unauthorized {
+            return Err("`advertises_oauth` requires `unauthorized`");
+        }
+        Ok(Self {
+            code: wire.code,
+            unauthorized: wire.unauthorized,
+            advertises_oauth: wire.advertises_oauth,
+        })
+    }
 }
 
 impl McpCallError {
