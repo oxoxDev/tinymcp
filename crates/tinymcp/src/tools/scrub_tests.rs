@@ -170,3 +170,19 @@ fn a_short_extra_secret_is_redacted_inside_larger_text() {
     assert!(map.contains_key("[redacted]"), "{value}");
     assert!(map.contains_key("tool_k9x"), "{value}");
 }
+
+#[test]
+fn debug_output_never_contains_a_secret() {
+    let scrubber = SecretScrubber::new(
+        &McpAuthConfig::BearerToken {
+            token: "configured-token".into(),
+        },
+        "https://example.com/mcp",
+    )
+    .with_secrets(["host token/1".to_string()]);
+    let shown = format!("{scrubber:?} {scrubber:#?}");
+    assert!(!shown.contains("configured-token"), "{shown}");
+    assert!(!shown.contains("host"), "{shown}");
+    assert!(!shown.contains("%2F"), "{shown}");
+    assert!(shown.contains("SecretScrubber"), "{shown}");
+}

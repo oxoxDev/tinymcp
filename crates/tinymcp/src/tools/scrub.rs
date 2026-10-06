@@ -30,10 +30,19 @@ const CREDENTIAL_QUERY_PARAM_NEEDLES: [&str; 7] = [
 ];
 
 /// Every secret one configured server was dialled with, ready to scrub.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct SecretScrubber {
     pub(super) secrets: Vec<String>,
     strict: Vec<String>,
+}
+
+impl std::fmt::Debug for SecretScrubber {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SecretScrubber")
+            .field("secrets", &self.secrets.len())
+            .field("strict", &self.strict.len())
+            .finish()
+    }
 }
 
 impl SecretScrubber {
