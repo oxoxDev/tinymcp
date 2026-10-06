@@ -405,10 +405,11 @@ pub(super) fn endpoint_without_query(endpoint: &str) -> String {
 }
 
 /// A required identifier argument, trimmed and without the markdown a model
-/// wraps it in when it answers in prose (`` `docs` ``, `*docs*`, `docs.`).
+/// wraps it in when it answers in prose (`` `docs` ``, `*docs*`, `` `docs`. ``).
 ///
-/// Only leading and trailing fence characters go: a server or tool name never
-/// starts or ends with one, so stripping cannot change a real name.
+/// Backticks and asterisks go from either end, and sentence punctuation goes
+/// only when it follows one of them. Every other character, `_` and `.`
+/// included, reaches the server as typed.
 pub(super) fn required_string_arg(args: &Value, key: &str) -> anyhow::Result<String> {
     let missing = || anyhow::anyhow!("missing required `{key}`");
     let value = args
@@ -417,9 +418,13 @@ pub(super) fn required_string_arg(args: &Value, key: &str) -> anyhow::Result<Str
         .map(str::trim)
         .filter(|s| !s.is_empty())
         .ok_or_else(missing)?;
-    let cleaned = value
-        .trim_start_matches(['`', '*', '_'])
-        .trim_end_matches(['`', '*', '_', '.', ',', ';', ':', '!']);
+    let unpunctuated = value.trim_end_matches(['.', ',', ';', ':', '!']);
+    let fenced = if unpunctuated.ends_with(['`', '*']) {
+        unpunctuated
+    } else {
+        value
+    };
+    let cleaned = fenced.trim_matches(['`', '*']);
     if cleaned.is_empty() {
         return Err(missing());
     }
