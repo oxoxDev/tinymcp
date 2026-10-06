@@ -313,8 +313,8 @@ impl Tool for McpCallTool {
             Ok(arguments) => Value::Object(arguments),
             Err(error) => {
                 let outcome = McpCallOutcome::failed(
-                    scrubber.scrub(&server),
-                    scrubber.scrub(&tool),
+                    &server,
+                    &tool,
                     McpCallError::new(tinymcp_bus::errors::INVALID_ARGUMENTS),
                 );
                 return Ok(with_outcome(
@@ -325,19 +325,12 @@ impl Tool for McpCallTool {
         };
 
         let (mut result, outcome) = match self.registry.call_tool(&server, &tool, arguments).await {
-            Ok(result) => (
-                result.rendered,
-                McpCallOutcome::answered(scrubber.scrub(&server), scrubber.scrub(&tool)),
-            ),
+            Ok(result) => (result.rendered, McpCallOutcome::answered(&server, &tool)),
             Err(err) => {
-                let outcome = McpCallOutcome::failed(
-                    scrubber.scrub(&server),
-                    scrubber.scrub(&tool),
-                    call_error(&err),
-                );
+                let outcome = McpCallOutcome::failed(&server, &tool, call_error(&err));
                 tracing::debug!(
-                    server = %outcome.server,
-                    tool = %outcome.tool,
+                    server = %scrubber.scrub(&server),
+                    tool = %scrubber.scrub(&tool),
                     code = err.wire_name(),
                     "[mcp] mcp_call_tool failed"
                 );

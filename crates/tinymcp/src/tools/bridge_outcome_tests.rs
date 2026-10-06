@@ -212,3 +212,20 @@ async fn arguments_that_are_not_an_object_report_invalid_arguments() {
     assert_eq!(outcome.tool, "whoami");
     assert_eq!(outcome.error.unwrap().code, errors::INVALID_ARGUMENTS);
 }
+
+#[tokio::test]
+async fn the_outcome_names_the_caller_s_server_and_tool_even_when_they_match_a_secret() {
+    let registry = registry(
+        &answering_server().await,
+        McpAuthConfig::BearerToken {
+            token: SECRET.into(),
+        },
+        &[SECRET],
+    );
+    let result = call_tool(registry).execute(args(SECRET)).await.unwrap();
+    assert!(result.is_error);
+    assert!(!result.output().contains(SECRET));
+    let outcome = outcome_of(&result);
+    assert_eq!(outcome.tool, SECRET);
+    assert_eq!(outcome.error.unwrap().code, errors::TOOL_NOT_ALLOWED);
+}
