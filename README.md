@@ -180,18 +180,25 @@ Enable the `tools` feature to expose each server tool as a
   `McpListServersTool`, `McpListToolsTool` and `McpCallTool`
   (`mcp_list_servers`, `mcp_list_tools`, `mcp_call_tool`). `McpCallTool` asks a
   host-supplied `ActGate` before it sends anything. Server and tool names lose
-  the markdown a model wraps them in (`` `docs` ``, `*docs*`, `docs.`).
-- **The call outcome.** Every `mcp_call_tool` result that names a server and a
-  tool carries a `tinymcp_bus::McpCallOutcome` in `ToolResult::metadata`, with
+  the backticks and asterisks a model wraps them in (`` `docs` ``, `**docs**`,
+  `` `docs`. ``); `_`, `.` and other characters are kept.
+- **The call outcome.** Every `mcp_call_tool` result for a call the act gate
+  allowed and that names a server, a tool and `arguments` carries a
+  `tinymcp_bus::McpCallOutcome` in `ToolResult::metadata`, with
   `kind` set to `MCP_CALL_RESULT_KIND` (`"mcp_call"`): the server and tool,
   `ok` when the server answered, and otherwise the error's wire name and
   whether it was a 401 that advertised OAuth. It is host-only — never rendered
   to the model — so a host meters answered calls and surfaces failures from it
-  instead of parsing text. Read it back with `McpCallOutcome::from_metadata`.
+  instead of parsing text. A call missing one of those fields, or refused by
+  the gate, fails before a result exists and carries no outcome. The server and
+  tool are reported as the caller named them, unscrubbed. Read it back with
+  `McpCallOutcome::from_metadata`; decoding rejects a wrong `kind` or an `ok`
+  that disagrees with `error`.
 - **`SecretScrubber`** removes a server's own credentials (tokens, basic-auth
   pairs, header and query values, URL userinfo) from whatever it echoes back;
   every bridge tool applies it, and a host wraps its own invokers with it.
-  `with_secrets` adds values the host keeps outside the server's config.
+  `with_secrets` adds values the host keeps outside the server's config, each
+  redacted as a strict credential: anywhere in the text, even when short.
 - **`tool_result`** maps a rendered MCP result onto `tinytools::ToolResult`,
   bounding oversized blocks.
 

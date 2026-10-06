@@ -10,10 +10,12 @@
 //! What stays with the host is the decision to allow a call at all:
 //! [`McpCallTool`] takes an [`ActGate`] it runs before anything is sent.
 //!
-//! Every result [`McpCallTool`] returns once it knows the server and tool
-//! carries a [`McpCallOutcome`] as its metadata: whether the server answered
-//! and, when it did not, the error's wire name and whether it was a 401 that
-//! advertised OAuth. The model never sees it; a host reads it to meter calls
+//! Every result [`McpCallTool`] returns once the act gate has allowed the call
+//! and it has a server, a tool and an `arguments` value carries a
+//! [`McpCallOutcome`] as its metadata. A call missing one of those, or refused
+//! by the gate, fails before any result exists and carries none. The outcome
+//! says whether the server answered and, when it did not, the error's wire
+//! name and whether it was a 401 that advertised OAuth. The model never sees it; a host reads it to meter calls
 //! and to surface failures without parsing the result text.
 
 // The tool names and descriptions are fixed strings, and the rendered Markdown

@@ -14,8 +14,8 @@ out of scope. A roadmap that lists everything is a roadmap nobody trusts.
   supply-chain checks
 - a manual release workflow that versions, tags, publishes to crates.io, and
   creates a GitHub release with crate and TinyBus runtime/module assets
-- a structured `mcp_call` outcome on every bridge call, for host metering and
-  failure surfacing (contract 1.3)
+- a structured `mcp_call` outcome on every bridge call that reaches a result,
+  for host metering and failure surfacing (contract 1.3)
 - `mcp.json` reading for hosts with their own store (`parse_with`), and a
   guarded OAuth refresh on the flow
 
