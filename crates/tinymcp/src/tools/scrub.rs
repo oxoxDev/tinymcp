@@ -132,9 +132,30 @@ impl SecretScrubber {
             }
             secrets.push(value.to_string());
         }
-        secrets.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
-        secrets.dedup();
+        sort_longest_first(&mut secrets);
         Self { secrets, strict }
+    }
+
+    /// This scrubber, also replacing each of `secrets`.
+    ///
+    /// For credentials the server's own configuration does not carry: a token
+    /// a host keeps in its own secret store, or a value it injected some other
+    /// way. Each is matched as typed and URL-encoded; blank values are skipped.
+    #[must_use]
+    pub fn with_secrets(mut self, secrets: impl IntoIterator<Item = String>) -> Self {
+        for secret in secrets {
+            let secret = secret.trim();
+            if secret.is_empty() {
+                continue;
+            }
+            let encoded = urlencoding::encode(secret).into_owned();
+            if encoded != secret {
+                self.secrets.push(encoded);
+            }
+            self.secrets.push(secret.to_string());
+        }
+        sort_longest_first(&mut self.secrets);
+        self
     }
 
     /// `text` with every known secret replaced.
@@ -253,6 +274,12 @@ impl SecretScrubber {
         }
         result
     }
+}
+
+/// Longest first, so a secret that contains another is replaced whole.
+fn sort_longest_first(secrets: &mut Vec<String>) {
+    secrets.sort_by(|a, b| b.len().cmp(&a.len()).then_with(|| a.cmp(b)));
+    secrets.dedup();
 }
 
 fn endpoint_query(endpoint: &str) -> Option<&str> {

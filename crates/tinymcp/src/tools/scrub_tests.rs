@@ -125,3 +125,33 @@ fn scrub_value_keeps_both_entries_when_keys_collide_after_redaction() {
     assert_eq!(map.get("[redacted]"), Some(&json!("a")));
     assert_eq!(map.get("[redacted] (2)"), Some(&json!("b")));
 }
+
+#[test]
+fn extra_secrets_are_redacted_as_typed_and_url_encoded() {
+    let scrubber = SecretScrubber::new(&McpAuthConfig::None, "https://example.com/mcp")
+        .with_secrets(["host token/1".to_string(), "   ".to_string()]);
+    assert_eq!(
+        scrubber.scrub("a host token/1 b host%20token%2F1 c"),
+        "a [redacted] b [redacted] c"
+    );
+    assert_eq!(scrubber.secrets.len(), 2);
+}
+
+#[test]
+fn extra_secrets_join_the_configured_ones_longest_first() {
+    let scrubber = SecretScrubber::new(
+        &McpAuthConfig::BearerToken {
+            token: "configured-token".into(),
+        },
+        "https://example.com/mcp",
+    )
+    .with_secrets(["configured-token-extended".to_string()]);
+    assert_eq!(
+        scrubber.scrub("configured-token-extended and configured-token"),
+        "[redacted] and [redacted]"
+    );
+    let result = scrubber.scrub_result(tinytools::ToolResult::json(
+        json!({ "echo": "configured-token-extended" }),
+    ));
+    assert!(!format!("{:?}", result.content).contains("configured-token"));
+}
