@@ -40,7 +40,7 @@ pub(super) struct PendingAuthorization {
 /// its own store can read the bundle it holds — for an expiry it shows, or to
 /// migrate one — without restating its shape. It holds a client secret and a
 /// refresh token: never log or display it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OAuthBundle {
     /// The refresh token, when the server issued one.
     pub refresh_token: Option<String>,
@@ -52,6 +52,19 @@ pub struct OAuthBundle {
     pub token_endpoint: String,
     /// When the current access token expires, in Unix seconds. Best effort.
     pub expires_at: u64,
+}
+
+impl std::fmt::Debug for OAuthBundle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let redacted = |secret: &Option<String>| secret.as_ref().map(|_| "[redacted]");
+        f.debug_struct("OAuthBundle")
+            .field("refresh_token", &redacted(&self.refresh_token))
+            .field("client_id", &self.client_id)
+            .field("client_secret", &redacted(&self.client_secret))
+            .field("token_endpoint", &self.token_endpoint)
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
 }
 
 /// A parsed token-endpoint reply.

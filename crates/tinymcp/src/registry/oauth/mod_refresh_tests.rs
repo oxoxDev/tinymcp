@@ -28,6 +28,31 @@ fn the_bundle_wire_form_is_pinned_and_round_trips() {
 }
 
 #[test]
+fn the_bundle_debug_output_hides_its_secrets() {
+    let bundle = OAuthBundle {
+        refresh_token: Some("refresh-secret".into()),
+        client_id: "cli-1".into(),
+        client_secret: Some("client-secret".into()),
+        token_endpoint: "https://auth.example/token".into(),
+        expires_at: 42,
+    };
+    let shown = format!("{bundle:?} {bundle:#?}");
+    assert!(!shown.contains("refresh-secret"), "{shown}");
+    assert!(!shown.contains("client-secret"), "{shown}");
+    assert!(
+        shown.contains("cli-1") && shown.contains("[redacted]"),
+        "{shown}"
+    );
+
+    let bare = OAuthBundle {
+        refresh_token: None,
+        client_secret: None,
+        ..bundle
+    };
+    assert!(format!("{bare:?}").contains("refresh_token: None"));
+}
+
+#[test]
 fn a_stored_bundle_reads_back_as_the_public_type() {
     let store = store_with_remote("https://example.test/mcp");
     store_expired_bundle(&store, "https://auth.example/token", Some("r1"));
