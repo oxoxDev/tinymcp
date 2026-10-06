@@ -404,12 +404,24 @@ pub(super) fn endpoint_without_query(endpoint: &str) -> String {
         .to_string()
 }
 
-fn required_string_arg(args: &Value, key: &str) -> anyhow::Result<String> {
+/// A required identifier argument, trimmed and without the markdown a model
+/// wraps it in when it answers in prose (`` `docs` ``, `*docs*`, `docs.`).
+///
+/// Only leading and trailing fence characters go: a server or tool name never
+/// starts or ends with one, so stripping cannot change a real name.
+pub(super) fn required_string_arg(args: &Value, key: &str) -> anyhow::Result<String> {
+    let missing = || anyhow::anyhow!("missing required `{key}`");
     let value = args
         .get(key)
         .and_then(Value::as_str)
         .map(str::trim)
         .filter(|s| !s.is_empty())
-        .ok_or_else(|| anyhow::anyhow!("missing required `{key}`"))?;
-    Ok(value.to_string())
+        .ok_or_else(missing)?;
+    let cleaned = value
+        .trim_start_matches(['`', '*', '_'])
+        .trim_end_matches(['`', '*', '_', '.', ',', ';', ':', '!']);
+    if cleaned.is_empty() {
+        return Err(missing());
+    }
+    Ok(cleaned.to_string())
 }

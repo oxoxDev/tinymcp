@@ -487,3 +487,31 @@ fn an_endpoint_that_is_not_a_url_is_cut_at_its_query_or_fragment() {
         "https://example.com/mcp"
     );
 }
+
+#[test]
+fn identifiers_lose_the_markdown_a_model_wraps_them_in() {
+    use super::bridge::required_string_arg;
+    let parsed = |value: &str| required_string_arg(&json!({ "server": value }), "server").unwrap();
+    assert_eq!(parsed("docs"), "docs");
+    assert_eq!(parsed("docs`"), "docs");
+    assert_eq!(parsed("`docs`"), "docs");
+    assert_eq!(parsed("*docs*"), "docs");
+    assert_eq!(parsed("docs."), "docs");
+    assert_eq!(parsed("  **docs**:  "), "docs");
+    assert_eq!(parsed("my_docs-v2"), "my_docs-v2");
+    let error = required_string_arg(&json!({ "server": "```" }), "server").unwrap_err();
+    assert_eq!(error.to_string(), "missing required `server`");
+    assert!(required_string_arg(&json!({ "server": 7 }), "server").is_err());
+}
+
+#[tokio::test]
+async fn a_fenced_server_name_reaches_the_configured_server() {
+    let (base, calls) = echoing_server("plain", None).await;
+    let registry = registry_with(&format!("{base}/mcp"), McpAuthConfig::None);
+    let result = call_tool(registry)
+        .execute(json!({ "server": "`docs`", "tool": "whoami`", "arguments": {} }))
+        .await
+        .unwrap();
+    assert!(!result.is_error, "{}", full_output(&result));
+    assert_eq!(calls.lock().len(), 1);
+}
