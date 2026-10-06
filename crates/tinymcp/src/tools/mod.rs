@@ -103,6 +103,9 @@ pub fn tools_for(
 mod test;
 
 #[cfg(test)]
+#[path = "bridge_outcome_tests.rs"]
+mod bridge_outcome_test;
+#[cfg(test)]
 #[path = "bridge_tests.rs"]
 mod bridge_test;
 #[cfg(test)]

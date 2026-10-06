@@ -9,6 +9,12 @@
 //!
 //! What stays with the host is the decision to allow a call at all:
 //! [`McpCallTool`] takes an [`ActGate`] it runs before anything is sent.
+//!
+//! Every result [`McpCallTool`] returns once it knows the server and tool
+//! carries a [`McpCallOutcome`] as its metadata: whether the server answered
+//! and, when it did not, the error's wire name and whether it was a 401 that
+//! advertised OAuth. The model never sees it; a host reads it to meter calls
+//! and to surface failures without parsing the result text.
 
 // The tool names and descriptions are fixed strings, and the rendered Markdown
 // is built a line at a time; both are clearer as written.
@@ -18,7 +24,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tinymcp_bus::McpAuthConfig;
+use tinymcp_bus::{McpAuthConfig, McpCallError, McpCallOutcome};
 use tinytools::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
 
 use super::scrub::SecretScrubber;
@@ -296,6 +302,7 @@ impl Tool for McpCallTool {
 
         let server = required_string_arg(&args, "server")?;
         let tool = required_string_arg(&args, "tool")?;
+        let scrubber = SecretScrubber::for_server(&self.registry, &server);
         let arguments = args
             .get("arguments")
             .cloned()
@@ -304,15 +311,39 @@ impl Tool for McpCallTool {
         // cannot hold one is refused naming what arrived.
         let arguments = match tinymcp_bus::normalize_tool_arguments(arguments) {
             Ok(arguments) => Value::Object(arguments),
-            Err(error) => return Ok(ToolResult::error(format!("`arguments`: {error}"))),
+            Err(error) => {
+                let outcome = McpCallOutcome::failed(
+                    scrubber.scrub(&server),
+                    scrubber.scrub(&tool),
+                    McpCallError::new(tinymcp_bus::errors::INVALID_ARGUMENTS),
+                );
+                return Ok(with_outcome(
+                    ToolResult::error(format!("`arguments`: {error}")),
+                    &outcome,
+                ));
+            }
         };
 
-        let scrubber = SecretScrubber::for_server(&self.registry, &server);
-        let mut result = match self.registry.call_tool(&server, &tool, arguments).await {
-            Ok(result) => result.rendered,
+        let (mut result, outcome) = match self.registry.call_tool(&server, &tool, arguments).await {
+            Ok(result) => (
+                result.rendered,
+                McpCallOutcome::answered(scrubber.scrub(&server), scrubber.scrub(&tool)),
+            ),
             Err(err) => {
-                return Ok(ToolResult::error(
-                    scrubber.scrub(&format!("mcp_call_tool failed: {err}")),
+                let outcome = McpCallOutcome::failed(
+                    scrubber.scrub(&server),
+                    scrubber.scrub(&tool),
+                    call_error(&err),
+                );
+                tracing::debug!(
+                    server = %outcome.server,
+                    tool = %outcome.tool,
+                    code = err.wire_name(),
+                    "[mcp] mcp_call_tool failed"
+                );
+                return Ok(with_outcome(
+                    ToolResult::error(scrubber.scrub(&format!("mcp_call_tool failed: {err}"))),
+                    &outcome,
                 ));
             }
         };
@@ -320,12 +351,30 @@ impl Tool for McpCallTool {
         if options.prefer_markdown && result.markdown_formatted.is_none() {
             result.markdown_formatted = Some(result.output());
         }
-        Ok(scrubber.scrub_result(super::tool_result(result)))
+        Ok(with_outcome(
+            scrubber.scrub_result(super::tool_result(result)),
+            &outcome,
+        ))
     }
 
     async fn execute(&self, args: Value) -> anyhow::Result<ToolResult> {
         self.execute_with_options(args, ToolCallOptions::default())
             .await
+    }
+}
+
+/// `result` carrying `outcome` as its host-only metadata.
+fn with_outcome(mut result: ToolResult, outcome: &McpCallOutcome) -> ToolResult {
+    result.metadata = serde_json::to_value(outcome).ok();
+    result
+}
+
+/// The host-facing classification of a failed call.
+fn call_error(error: &crate::Error) -> McpCallError {
+    McpCallError {
+        code: error.wire_name().to_string(),
+        unauthorized: error.is_unauthorized(),
+        advertises_oauth: error.advertises_oauth(),
     }
 }
 
