@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 
+use serde_json::Value;
 use tinymcp_bus::Transport;
 
 /// One server as the document declares it, after validation.
@@ -23,6 +24,56 @@ pub struct Declared {
     pub description: Option<String>,
     /// Whether the server is brought up and exposed.
     pub enabled: bool,
+    /// `allowedTools`: the only tools the server may expose. Empty means every
+    /// tool. Read by [`parse_with`](super::parse_with) only.
+    pub allowed_tools: Vec<String>,
+    /// `disallowedTools`: tools that are always blocked. Read by
+    /// [`parse_with`](super::parse_with) only.
+    pub disallowed_tools: Vec<String>,
+    /// `timeoutSecs`: how long a call may take, when the entry says. Read by
+    /// [`parse_with`](super::parse_with) only.
+    pub timeout_secs: Option<u64>,
+    /// The host's own fields, by document key, verbatim.
+    ///
+    /// Only the names a host registers in [`ParseOptions::host_fields`] land
+    /// here; a `null` value reads as absent.
+    pub host_fields: BTreeMap<String, Value>,
+}
+
+/// How [`parse_with`](super::parse_with) reads a document.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct ParseOptions<'a> {
+    /// Entry fields the host understands beyond the standard ones, by
+    /// document key (`"readOnlyTools"`, say). Their values are carried in
+    /// [`Declared::host_fields`] untouched; validating them is the host's. A
+    /// name that is already a standard field is read as that field.
+    pub host_fields: &'a [&'a str],
+    /// Whether a refused entry is dropped and reported instead of refusing
+    /// the whole document.
+    ///
+    /// For documents a user did not write against this host, such as a
+    /// bundle copied from a vendor's instructions. A document whose root is
+    /// unreadable is still refused.
+    pub lenient: bool,
+}
+
+/// What [`parse_with`](super::parse_with) read.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ParseReport {
+    /// The entries that were read, in document-key order.
+    pub declared: Vec<Declared>,
+    /// The entries that were dropped, in document-key order. Always empty
+    /// unless [`ParseOptions::lenient`] is set.
+    pub rejected: Vec<RejectedEntry>,
+}
+
+/// One entry a lenient read dropped.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RejectedEntry {
+    /// The entry's key, trimmed.
+    pub name: String,
+    /// Why it was dropped, naming the entry and the field.
+    pub detail: String,
 }
 
 /// One server a document application touched.

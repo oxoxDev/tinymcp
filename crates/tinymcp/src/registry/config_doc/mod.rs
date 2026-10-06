@@ -14,6 +14,17 @@
 //! applies the difference. Neither is an import format that can drift from
 //! what is configured.
 //!
+//! # A host that keeps its own store
+//!
+//! A host that holds declarations itself rather than in the install store
+//! reads the same document through [`parse_with`], which also accepts
+//! `allowedTools`, `disallowedTools` and `timeoutSecs`, carries fields the
+//! host registers in [`ParseOptions::host_fields`] through verbatim, and can
+//! drop a bad entry instead of refusing the document. [`render_declared`]
+//! writes those declarations back. [`parse`] keeps refusing the extension
+//! fields, because the install store has nowhere to put them and accepting
+//! them there would drop them silently.
+//!
 //! # Credentials are write-only
 //!
 //! A stdio server's `env` and an HTTP server's `headers` are secrets. They are
@@ -35,9 +46,18 @@ mod apply;
 mod document;
 mod types;
 
-pub use document::{ROOT_KEY, merge_credentials, parse, render, same_dial, to_installed};
-pub use types::{AppliedServer, ConfigApplyReport, Declared};
+pub use document::{
+    ROOT_KEY, merge_credentials, parse, parse_with, render, render_declared, same_dial,
+    to_installed,
+};
+pub use types::{
+    AppliedServer, ConfigApplyReport, Declared, ParseOptions, ParseReport, RejectedEntry,
+};
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]
 mod test;
+
+#[cfg(test)]
+#[path = "mod_parse_with_tests.rs"]
+mod parse_with_test;

@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
-use super::types::Declared;
+use super::types::{Declared, ParseOptions, ParseReport, RejectedEntry};
 use crate::error::{Error, Result};
 use tinymcp_bus::{InstalledServer, Transport};
 
@@ -16,6 +16,21 @@ const ECHOED_FIELDS: &[&str] = &["envKeys", "authConfigured"];
 
 /// Fields a write accepts without acting on, because other clients emit them.
 const TOLERATED_FIELDS: &[&str] = &["type", "transport"];
+
+/// The fields every entry may carry.
+const STANDARD_FIELDS: &[&str] = &[
+    "url",
+    "command",
+    "args",
+    "env",
+    "headers",
+    "description",
+    "enabled",
+];
+
+/// The fields [`parse_with`] reads and [`parse`] refuses, because the install
+/// store has nowhere to keep them.
+const EXTENSION_FIELDS: &[&str] = &["allowedTools", "disallowedTools", "timeoutSecs"];
 
 /// Credential names beginning this way are the store's own bookkeeping (the
 /// OAuth refresh bundle) and are neither rendered nor overwritten from here.
@@ -86,6 +101,51 @@ pub fn parse(doc: &Value) -> Result<Vec<Declared>> {
 
 /// [`parse`], with the refusal as the bare sentence.
 fn parse_servers(doc: &Value) -> std::result::Result<Vec<Declared>, String> {
+    let mut declared = Vec::new();
+    for (name, entry) in server_entries(doc)? {
+        declared.push(read_entry(name, entry, None)?);
+    }
+    Ok(declared)
+}
+
+/// Reads a document into declarations for a host that keeps its own store.
+///
+/// As [`parse`], plus `allowedTools`, `disallowedTools` and `timeoutSecs`, the
+/// host's own fields from [`ParseOptions::host_fields`], and a refusal of two
+/// keys that name one server once trimmed. Under [`ParseOptions::lenient`] a
+/// refused entry is dropped and reported in [`ParseReport::rejected`] rather
+/// than refusing the document.
+///
+/// # Errors
+///
+/// Returns [`Error::ConfigDoc`] when the document's root is unreadable, and,
+/// unless lenient, for the first refused entry.
+pub fn parse_with(doc: &Value, options: &ParseOptions<'_>) -> Result<ParseReport> {
+    let config_doc = |detail| Error::ConfigDoc { detail };
+    let mut report = ParseReport::default();
+    for (name, entry) in server_entries(doc).map_err(config_doc)? {
+        let read = if report.declared.iter().any(|seen| seen.name == name) {
+            Err(format!("`{name}` is declared twice"))
+        } else {
+            read_entry(name, entry, Some(options))
+        };
+        match read {
+            Ok(declared) => report.declared.push(declared),
+            Err(detail) if options.lenient => {
+                tracing::debug!(name, "dropping a refused mcp.json entry: {detail}");
+                report.rejected.push(RejectedEntry {
+                    name: name.to_string(),
+                    detail,
+                });
+            }
+            Err(detail) => return Err(config_doc(detail)),
+        }
+    }
+    Ok(report)
+}
+
+/// The document's entries by trimmed key, refusing an unreadable root.
+fn server_entries(doc: &Value) -> std::result::Result<Vec<(&str, &Value)>, String> {
     let Some(root) = doc.as_object() else {
         return Err(format!("mcp.json holds an object with an `{ROOT_KEY}` key"));
     };
@@ -95,35 +155,46 @@ fn parse_servers(doc: &Value) -> std::result::Result<Vec<Declared>, String> {
     let Some(servers) = servers.as_object() else {
         return Err(format!("`{ROOT_KEY}` maps a server name to its settings"));
     };
-
-    let mut declared = Vec::with_capacity(servers.len());
-    for (name, entry) in servers {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err("a server needs a name — one entry's key is empty".to_string());
-        }
-        let Some(entry) = entry.as_object() else {
-            return Err(format!(
-                "`{name}` holds an object, e.g. {{ \"command\": \"npx\", \"args\": [\"-y\", \"…\"] }} or {{ \"url\": \"https://…\" }}"
-            ));
-        };
-        declared.push(parse_entry(name, entry)?);
-    }
-    Ok(declared)
+    Ok(servers
+        .iter()
+        .map(|(name, entry)| (name.trim(), entry))
+        .collect())
 }
 
-/// Reads one entry.
-fn parse_entry(name: &str, entry: &Map<String, Value>) -> std::result::Result<Declared, String> {
+/// Reads one keyed entry, refusing an empty key or a non-object value.
+fn read_entry(
+    name: &str,
+    entry: &Value,
+    extension: Option<&ParseOptions<'_>>,
+) -> std::result::Result<Declared, String> {
+    if name.is_empty() {
+        return Err("a server needs a name — one entry's key is empty".to_string());
+    }
+    let Some(entry) = entry.as_object() else {
+        return Err(format!(
+            "`{name}` holds an object, e.g. {{ \"command\": \"npx\", \"args\": [\"-y\", \"…\"] }} or {{ \"url\": \"https://…\" }}"
+        ));
+    };
+    parse_entry(name, entry, extension)
+}
+
+/// Reads one entry. `extension` is `None` for [`parse`], which refuses the
+/// extension and host fields.
+fn parse_entry(
+    name: &str,
+    entry: &Map<String, Value>,
+    extension: Option<&ParseOptions<'_>>,
+) -> std::result::Result<Declared, String> {
+    let host_fields = extension.map_or(&[][..], |options| options.host_fields);
     for key in entry.keys() {
-        let known = matches!(
-            key.as_str(),
-            "url" | "command" | "args" | "env" | "headers" | "description" | "enabled"
-        ) || ECHOED_FIELDS.contains(&key.as_str())
-            || TOLERATED_FIELDS.contains(&key.as_str());
+        let key = key.as_str();
+        let known = STANDARD_FIELDS.contains(&key)
+            || ECHOED_FIELDS.contains(&key)
+            || TOLERATED_FIELDS.contains(&key)
+            || (extension.is_some() && EXTENSION_FIELDS.contains(&key))
+            || host_fields.contains(&key);
         if !known {
-            return Err(format!(
-                "`{name}` has a `{key}` field this host doesn't understand; it accepts url, headers, command, args, env, description and enabled"
-            ));
+            return Err(unknown_field(name, key, extension.is_some(), host_fields));
         }
     }
 
@@ -180,7 +251,139 @@ fn parse_entry(name: &str, entry: &Map<String, Value>) -> std::result::Result<De
         credentials,
         description,
         enabled,
+        allowed_tools: tool_list(name, entry, "allowedTools")?,
+        disallowed_tools: tool_list(name, entry, "disallowedTools")?,
+        timeout_secs: timeout_secs(name, entry)?,
+        host_fields: host_field_values(entry, host_fields),
     })
+}
+
+/// The refusal for a field this read does not accept, listing what it does.
+fn unknown_field(name: &str, key: &str, extended: bool, host_fields: &[&str]) -> String {
+    let mut accepted: Vec<&str> = vec![
+        "url",
+        "headers",
+        "command",
+        "args",
+        "env",
+        "description",
+        "enabled",
+    ];
+    if extended {
+        accepted.extend(EXTENSION_FIELDS);
+        accepted.extend(
+            host_fields.iter().filter(|field| {
+                !STANDARD_FIELDS.contains(field) && !EXTENSION_FIELDS.contains(field)
+            }),
+        );
+    }
+    let (last, rest) = accepted.split_last().unwrap_or((&"", &[]));
+    format!(
+        "`{name}` has a `{key}` field this host doesn't understand; it accepts {} and {last}",
+        rest.join(", ")
+    )
+}
+
+/// A list of tool names, trimmed, refusing a blank or non-string one. Absent
+/// reads as empty.
+fn tool_list(
+    name: &str,
+    entry: &Map<String, Value>,
+    key: &str,
+) -> std::result::Result<Vec<String>, String> {
+    match entry.get(key) {
+        None | Some(Value::Null) => Ok(Vec::new()),
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| {
+                item.as_str()
+                    .map(str::trim)
+                    .filter(|tool| !tool.is_empty())
+                    .map(str::to_string)
+                    .ok_or_else(|| format!("`{name}`.{key} holds tool names only"))
+            })
+            .collect(),
+        Some(_) => Err(format!("`{name}`.{key} is a list of tool names")),
+    }
+}
+
+/// `timeoutSecs`, refusing anything but a whole number of seconds above zero.
+fn timeout_secs(
+    name: &str,
+    entry: &Map<String, Value>,
+) -> std::result::Result<Option<u64>, String> {
+    match entry.get("timeoutSecs") {
+        None | Some(Value::Null) => Ok(None),
+        Some(value) => value
+            .as_u64()
+            .filter(|secs| *secs > 0)
+            .map(Some)
+            .ok_or_else(|| format!("`{name}`.timeoutSecs is a whole number of seconds above zero")),
+    }
+}
+
+/// The host's registered fields an entry carries, verbatim, skipping nulls
+/// and any name that is a standard field.
+fn host_field_values(entry: &Map<String, Value>, host_fields: &[&str]) -> BTreeMap<String, Value> {
+    host_fields
+        .iter()
+        .filter(|field| {
+            !STANDARD_FIELDS.contains(field)
+                && !EXTENSION_FIELDS.contains(field)
+                && !ECHOED_FIELDS.contains(field)
+                && !TOLERATED_FIELDS.contains(field)
+        })
+        .filter_map(|field| {
+            let value = entry.get(*field).filter(|value| !value.is_null())?;
+            Some(((*field).to_string(), value.clone()))
+        })
+        .collect()
+}
+
+/// Writes declarations back as the document [`parse_with`] reads.
+///
+/// For a host that keeps declarations itself; [`render`] is the install
+/// store's projection. Servers are sorted by name, the extension and host
+/// fields are emitted when set, and credentials never are: a declaration's
+/// `env` or `headers` is write-only, as everywhere else in this module.
+#[must_use]
+pub fn render_declared(declared: &[Declared]) -> Value {
+    let mut entries: Vec<&Declared> = declared.iter().collect();
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+
+    let mut out = Map::new();
+    for server in entries {
+        let mut entry = Map::new();
+        for (key, value) in &server.host_fields {
+            entry.insert(key.clone(), value.clone());
+        }
+        if let Transport::HttpRemote { url } = &server.transport {
+            entry.insert("url".into(), json!(url));
+        } else {
+            entry.insert("command".into(), json!(server.command));
+            if !server.args.is_empty() {
+                entry.insert("args".into(), json!(server.args));
+            }
+        }
+        if let Some(description) = server.description.as_deref().filter(|d| !d.is_empty()) {
+            entry.insert("description".into(), json!(description));
+        }
+        if !server.enabled {
+            entry.insert("enabled".into(), json!(false));
+        }
+        if !server.allowed_tools.is_empty() {
+            entry.insert("allowedTools".into(), json!(server.allowed_tools));
+        }
+        if !server.disallowed_tools.is_empty() {
+            entry.insert("disallowedTools".into(), json!(server.disallowed_tools));
+        }
+        if let Some(secs) = server.timeout_secs {
+            entry.insert("timeoutSecs".into(), json!(secs));
+        }
+        out.insert(server.name.clone(), Value::Object(entry));
+    }
+
+    json!({ ROOT_KEY: out })
 }
 
 /// Reads an entry's credential block: `env` for a stdio server, `headers` for
