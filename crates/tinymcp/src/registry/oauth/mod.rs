@@ -51,7 +51,7 @@ pub(crate) mod tokens;
 pub(crate) mod types;
 
 pub use credentials::OAuthCredentialStore;
-pub use flow::OAuthFlow;
+pub use flow::{DEFAULT_CLIENT_NAME, OAuthFlow};
 pub use tokens::{OAUTH_BUNDLE_KEY, refresh_if_expired};
 pub use types::{AuthDetection, AuthKind, OAuthBundle};
 

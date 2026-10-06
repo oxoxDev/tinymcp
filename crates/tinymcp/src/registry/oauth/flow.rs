@@ -34,12 +34,12 @@ const AUTH_SERVER_TIMEOUT_SECS: u64 = 20;
 /// How long to wait when probing a server for what it wants.
 const PROBE_TIMEOUT_SECS: u64 = 20;
 
-/// The client name presented during dynamic registration.
+/// The client name presented during dynamic registration when the host sets
+/// none with [`OAuthFlow::with_client_name`].
 ///
-/// A user sees this on the consent screen, so it names the library rather than
-/// leaving it blank. A host that wants its own name there registers its own
-/// client; that is a larger change than a string.
-const CLIENT_NAME: &str = "TinyMCP";
+/// A user sees it on the consent screen, so it names the library rather than
+/// leaving it blank.
+pub const DEFAULT_CLIENT_NAME: &str = "TinyMCP";
 
 /// Runs browser sign-in for HTTP-remote servers.
 ///
@@ -53,6 +53,7 @@ pub struct OAuthFlow {
     proxy: Option<McpProxyConfig>,
     pending: Mutex<HashMap<String, PendingAuthorization>>,
     public_endpoints_only: bool,
+    client_name: String,
 }
 
 impl OAuthFlow {
@@ -82,7 +83,30 @@ impl OAuthFlow {
             proxy,
             pending: Mutex::new(HashMap::new()),
             public_endpoints_only: false,
+            client_name: DEFAULT_CLIENT_NAME.to_string(),
         })
+    }
+
+    /// Sets the client name sent during dynamic registration, which the
+    /// authorization server shows the user on its consent screen.
+    ///
+    /// A blank name keeps [`DEFAULT_CLIENT_NAME`]. Surrounding whitespace is
+    /// trimmed. Clients already registered keep the name they were registered
+    /// with.
+    #[must_use]
+    pub fn with_client_name(mut self, name: impl Into<String>) -> Self {
+        let name = name.into();
+        let name = name.trim();
+        if !name.is_empty() {
+            self.client_name = name.to_string();
+        }
+        self
+    }
+
+    /// The client name sent during dynamic registration.
+    #[must_use]
+    pub fn client_name(&self) -> &str {
+        &self.client_name
     }
 
     /// Refuses authorization, registration and token endpoints that are not
@@ -419,7 +443,7 @@ impl OAuthFlow {
         redirect_uri: &str,
     ) -> Result<(String, Option<String>)> {
         let body = json!({
-            "client_name": CLIENT_NAME,
+            "client_name": self.client_name,
             "redirect_uris": [redirect_uri],
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],

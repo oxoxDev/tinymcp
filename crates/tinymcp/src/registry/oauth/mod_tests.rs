@@ -19,7 +19,7 @@ use axum::routing::post;
 use axum::{Json, Router};
 use serde_json::{Value, json};
 
-use super::flow::OAuthFlow;
+use super::flow::{DEFAULT_CLIENT_NAME, OAuthFlow};
 use super::tokens::{OAUTH_BUNDLE_KEY, refresh_if_expired};
 use super::types::{AuthKind, TokenResponse};
 use crate::Error;
@@ -579,6 +579,8 @@ use axum::routing::get;
 #[derive(Debug, Default)]
 struct Authority {
     registrations: AtomicUsize,
+    /// The body the registration endpoint last received.
+    last_registration: parking_lot::Mutex<Option<Value>>,
     exchanges: AtomicUsize,
     /// The form the token endpoint last received.
     last_form: parking_lot::Mutex<Option<String>>,
@@ -600,13 +602,16 @@ fn endpoints() -> Router<Arc<Authority>> {
     Router::new()
         .route(
             "/register",
-            post(|State(state): State<Arc<Authority>>| async move {
-                state.registrations.fetch_add(1, Ordering::SeqCst);
-                axum::Json(json!({
-                    "client_id": "client-1",
-                    "client_secret": "client-secret-1",
-                }))
-            }),
+            post(
+                |State(state): State<Arc<Authority>>, Json(body): Json<Value>| async move {
+                    state.registrations.fetch_add(1, Ordering::SeqCst);
+                    *state.last_registration.lock() = Some(body);
+                    axum::Json(json!({
+                        "client_id": "client-1",
+                        "client_secret": "client-secret-1",
+                    }))
+                },
+            ),
         )
         .route(
             "/token",
@@ -789,6 +794,42 @@ async fn beginning_a_sign_in_registers_a_client_and_returns_an_authorize_url() {
 
     assert_eq!(state.registrations.load(Ordering::SeqCst), 1);
     assert!(url.contains("/authorize"), "{url}");
+}
+
+async fn registered_client_name(flow: OAuthFlow) -> Option<Value> {
+    let (endpoint, state) = authority_with_challenge().await;
+    let store = store_with_remote(&endpoint);
+    flow.begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .await
+        .expect("begin");
+    let body = state.last_registration.lock().clone();
+    body.and_then(|body| body.get("client_name").cloned())
+}
+
+#[tokio::test]
+async fn registration_names_the_library_when_the_host_sets_no_name() {
+    assert_eq!(
+        registered_client_name(flow()).await,
+        Some(json!(DEFAULT_CLIENT_NAME))
+    );
+}
+
+#[tokio::test]
+async fn registration_carries_the_client_name_the_host_sets() {
+    let flow = flow().with_client_name("  OpenCompany  ");
+    assert_eq!(flow.client_name(), "OpenCompany");
+    assert_eq!(
+        registered_client_name(flow).await,
+        Some(json!("OpenCompany"))
+    );
+}
+
+#[test]
+fn a_blank_client_name_keeps_the_default() {
+    assert_eq!(
+        flow().with_client_name("   ").client_name(),
+        DEFAULT_CLIENT_NAME
+    );
 }
 
 #[tokio::test]
