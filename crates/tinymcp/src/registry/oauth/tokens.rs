@@ -105,7 +105,13 @@ pub(super) async fn exchange_refresh<S>(
 where
     S: OAuthCredentialStore + ?Sized,
 {
-    let refresh_token = bundle.refresh_token.as_deref().unwrap_or_default();
+    let Some(refresh_token) = bundle
+        .refresh_token
+        .as_deref()
+        .filter(|token| !token.trim().is_empty())
+    else {
+        return Ok(false);
+    };
     let mut form: Vec<(&str, &str)> = vec![
         ("grant_type", "refresh_token"),
         ("refresh_token", refresh_token),

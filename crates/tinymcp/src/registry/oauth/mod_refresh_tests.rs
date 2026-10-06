@@ -219,3 +219,31 @@ async fn a_refresh_does_not_overwrite_a_sign_in_stored_while_it_waited() {
         "Bearer stale"
     );
 }
+
+#[tokio::test]
+async fn exchanging_a_bundle_without_a_refresh_token_sends_nothing() {
+    let requests = TokenRequests::default();
+    let base = serve(token_endpoint(
+        requests.clone(),
+        json!({ "access_token": "fresh", "expires_in": 3600 }),
+    ))
+    .await;
+    let store = store_with_remote("https://example.test/mcp");
+    store_expired_bundle(&store, &format!("{base}/token"), Some("r1"));
+    let http = reqwest::Client::new();
+    for refresh_token in [None, Some("  ".to_string())] {
+        let bundle = OAuthBundle {
+            refresh_token,
+            client_id: "cli-1".into(),
+            client_secret: None,
+            token_endpoint: format!("{base}/token"),
+            expires_at: 1,
+        };
+        assert!(
+            !crate::registry::oauth::tokens::exchange_refresh(&store, &http, "srv-1", &bundle)
+                .await
+                .unwrap()
+        );
+    }
+    assert_eq!(requests.count.load(Ordering::SeqCst), 0);
+}
