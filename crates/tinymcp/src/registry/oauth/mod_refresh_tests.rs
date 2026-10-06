@@ -154,3 +154,68 @@ async fn an_unreadable_bundle_is_reported_by_the_flow() {
             .contains("stored oauth bundle is unreadable")
     );
 }
+
+/// A store whose bundle is replaced by a newer sign-in after the first read.
+struct SupersededStore {
+    inner: Store,
+    reads: AtomicUsize,
+    writes: AtomicUsize,
+}
+
+#[allow(clippy::unused_async_trait_impl)]
+impl crate::registry::OAuthCredentialStore for SupersededStore {
+    async fn remote_url(&self, server_id: &str) -> crate::Result<Option<String>> {
+        self.inner.remote_url(server_id).await
+    }
+
+    async fn load_credentials(&self, server_id: &str) -> crate::Result<BTreeMap<String, String>> {
+        let mut env = self.inner.load_credentials(server_id).await?;
+        if self.reads.fetch_add(1, Ordering::SeqCst) >= 1 {
+            let newer = json!({
+                "refresh_token": "r-newer",
+                "client_id": "cli-2",
+                "client_secret": null,
+                "token_endpoint": "https://auth.example/token",
+                "expires_at": u64::MAX / 2,
+            });
+            env.insert(OAUTH_BUNDLE_KEY.to_string(), newer.to_string());
+            env.insert("Authorization".to_string(), "Bearer newer".to_string());
+        }
+        Ok(env)
+    }
+
+    async fn store_credentials(
+        &self,
+        server_id: &str,
+        credentials: &BTreeMap<String, String>,
+    ) -> crate::Result<()> {
+        self.writes.fetch_add(1, Ordering::SeqCst);
+        self.inner.store_credentials(server_id, credentials).await
+    }
+}
+
+#[tokio::test]
+async fn a_refresh_does_not_overwrite_a_sign_in_stored_while_it_waited() {
+    let requests = TokenRequests::default();
+    let base = serve(token_endpoint(
+        requests.clone(),
+        json!({ "access_token": "fresh", "expires_in": 3600 }),
+    ))
+    .await;
+    let inner = store_with_remote("https://example.test/mcp");
+    store_expired_bundle(&inner, &format!("{base}/token"), Some("r1"));
+    let store = SupersededStore {
+        inner,
+        reads: AtomicUsize::new(0),
+        writes: AtomicUsize::new(0),
+    };
+
+    let flow = OAuthFlow::new(None).unwrap();
+    assert!(!flow.refresh(&store, "srv-1").await.unwrap());
+    assert_eq!(requests.count.load(Ordering::SeqCst), 1);
+    assert_eq!(store.writes.load(Ordering::SeqCst), 0);
+    assert_eq!(
+        store.inner.load_env_values("srv-1").unwrap()["Authorization"],
+        "Bearer stale"
+    );
+}

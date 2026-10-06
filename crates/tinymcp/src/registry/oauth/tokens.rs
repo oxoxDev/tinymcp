@@ -124,6 +124,11 @@ where
         tokens.refresh_token.clone_from(&bundle.refresh_token);
     }
 
+    if superseded(store, server_id, bundle).await? {
+        tracing::info!(server_id, "dropped a refresh superseded by a newer sign-in");
+        return Ok(false);
+    }
+
     persist(
         store,
         server_id,
@@ -136,6 +141,22 @@ where
 
     tracing::info!(server_id, "refreshed an expired access token");
     Ok(true)
+}
+
+/// Whether the stored bundle is no longer the `bundle` a refresh started from,
+/// because a sign-in stored a newer one while the token endpoint was answering.
+///
+/// A store offers no compare-and-swap, so this narrows the window rather than
+/// closing it.
+async fn superseded<S>(store: &S, server_id: &str, bundle: &OAuthBundle) -> Result<bool>
+where
+    S: OAuthCredentialStore + ?Sized,
+{
+    let env = store.load_credentials(server_id).await?;
+    let current = env
+        .get(OAUTH_BUNDLE_KEY)
+        .and_then(|raw| serde_json::from_str::<OAuthBundle>(raw).ok());
+    Ok(current.as_ref() != Some(bundle))
 }
 
 /// Stores an access token and its refresh bundle.
