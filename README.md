@@ -179,15 +179,40 @@ Enable the `tools` feature to expose each server tool as a
 - **The generic bridge** is three tools over one configured-server registry:
   `McpListServersTool`, `McpListToolsTool` and `McpCallTool`
   (`mcp_list_servers`, `mcp_list_tools`, `mcp_call_tool`). `McpCallTool` asks a
-  host-supplied `ActGate` before it sends anything.
+  host-supplied `ActGate` before it sends anything. Server and tool names lose
+  the markdown a model wraps them in (`` `docs` ``, `*docs*`, `docs.`).
+- **The call outcome.** Every `mcp_call_tool` result that names a server and a
+  tool carries a `tinymcp_bus::McpCallOutcome` in `ToolResult::metadata`, with
+  `kind` set to `MCP_CALL_RESULT_KIND` (`"mcp_call"`): the server and tool,
+  `ok` when the server answered, and otherwise the error's wire name and
+  whether it was a 401 that advertised OAuth. It is host-only — never rendered
+  to the model — so a host meters answered calls and surfaces failures from it
+  instead of parsing text. Read it back with `McpCallOutcome::from_metadata`.
 - **`SecretScrubber`** removes a server's own credentials (tokens, basic-auth
   pairs, header and query values, URL userinfo) from whatever it echoes back;
   every bridge tool applies it, and a host wraps its own invokers with it.
+  `with_secrets` adds values the host keeps outside the server's config.
 - **`tool_result`** maps a rendered MCP result onto `tinytools::ToolResult`,
   bounding oversized blocks.
 
 `tinytools` is a git dependency so a host that links another checkout of it can
 `[patch]` the two into one package.
+
+## `mcp.json` and OAuth for hosts with their own store
+
+`registry::config_doc` reads and writes the `{ "mcpServers": { … } }` document.
+`parse` and `render` are the install store's reading and projection.
+A host that keeps declarations itself uses `parse_with` and `render_declared`
+instead: `parse_with` also reads `allowedTools`, `disallowedTools` and
+`timeoutSecs`, carries the fields the host registers in
+`ParseOptions::host_fields` through verbatim in `Declared::host_fields`, and
+with `lenient` set drops a bad entry into `ParseReport::rejected` rather than
+refusing the document. Credentials are write-only in both.
+
+`registry::OAuthFlow::refresh` refreshes an expired token from a host's
+`OAuthCredentialStore`, re-checking the token endpoint when
+`require_public_endpoints()` is set; the free `refresh_if_expired` does not
+check. `registry::OAuthBundle` is the stored refresh bundle's shape.
 
 ## Static linking
 
