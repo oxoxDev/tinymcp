@@ -392,3 +392,42 @@ fn an_outcome_is_read_back_only_from_metadata_of_its_kind() {
         None
     );
 }
+
+#[test]
+fn decoding_an_outcome_rejects_what_the_constructors_never_produce() {
+    let decode = |value: serde_json::Value| serde_json::from_value::<super::McpCallOutcome>(value);
+    let error = json!({ "code": crate::errors::TRANSPORT, "unauthorized": false, "advertises_oauth": false });
+    let base =
+        |ok: bool| json!({ "kind": "mcp_call", "server": "docs", "tool": "search", "ok": ok });
+
+    let mut answered_with_error = base(true);
+    answered_with_error["error"] = error.clone();
+    assert!(decode(answered_with_error).is_err());
+
+    assert!(decode(base(false)).is_err());
+    let mut failed_null_error = base(false);
+    failed_null_error["error"] = serde_json::Value::Null;
+    assert!(decode(failed_null_error).is_err());
+
+    let mut missing_kind = base(true);
+    missing_kind.as_object_mut().unwrap().remove("kind");
+    assert!(decode(missing_kind).is_err());
+    let mut wrong_kind = base(true);
+    wrong_kind["kind"] = json!("web_search");
+    assert!(decode(wrong_kind).is_err());
+
+    assert_eq!(
+        decode(base(true)).unwrap(),
+        super::McpCallOutcome::answered("docs", "search")
+    );
+    let mut failed = base(false);
+    failed["error"] = error;
+    assert_eq!(
+        decode(failed).unwrap(),
+        super::McpCallOutcome::failed(
+            "docs",
+            "search",
+            super::McpCallError::new(crate::errors::TRANSPORT)
+        )
+    );
+}

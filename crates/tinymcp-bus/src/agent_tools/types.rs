@@ -94,7 +94,12 @@ pub const MCP_CALL_RESULT_KIND: &str = "mcp_call";
 /// `ok` says whether the server answered the call. A tool that answered with
 /// its own error result still has `ok: true`: the server was reached and the
 /// failure is the tool's, reported in the result itself.
+///
+/// Decoding rejects a payload whose `kind` is not [`MCP_CALL_RESULT_KIND`] or
+/// whose `ok` and `error` disagree, so a decoded outcome is one the
+/// constructors could have produced.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "McpCallOutcomeWire")]
 pub struct McpCallOutcome {
     /// Always [`MCP_CALL_RESULT_KIND`].
     pub kind: String,
@@ -140,10 +145,44 @@ impl McpCallOutcome {
     /// [`MCP_CALL_RESULT_KIND`], or does not decode as an outcome.
     #[must_use]
     pub fn from_metadata(metadata: &Value) -> Option<Self> {
-        if metadata.get("kind").and_then(Value::as_str) != Some(MCP_CALL_RESULT_KIND) {
-            return None;
-        }
         serde_json::from_value(metadata.clone()).ok()
+    }
+}
+
+#[derive(Deserialize)]
+struct McpCallOutcomeWire {
+    kind: String,
+    server: String,
+    tool: String,
+    ok: bool,
+    #[serde(default)]
+    error: Option<McpCallError>,
+}
+
+impl TryFrom<McpCallOutcomeWire> for McpCallOutcome {
+    type Error = String;
+
+    fn try_from(wire: McpCallOutcomeWire) -> Result<Self, Self::Error> {
+        if wire.kind != MCP_CALL_RESULT_KIND {
+            return Err(format!(
+                "expected kind `{MCP_CALL_RESULT_KIND}`, got `{}`",
+                wire.kind
+            ));
+        }
+        if wire.ok != wire.error.is_none() {
+            return Err(if wire.ok {
+                "an answered call cannot carry an error".to_string()
+            } else {
+                "a failed call must carry an error".to_string()
+            });
+        }
+        Ok(Self {
+            kind: wire.kind,
+            server: wire.server,
+            tool: wire.tool,
+            ok: wire.ok,
+            error: wire.error,
+        })
     }
 }
 
