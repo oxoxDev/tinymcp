@@ -11,7 +11,7 @@ use sha2::{Digest, Sha256};
 
 use super::credentials::OAuthCredentialStore;
 use super::endpoint_guard::{guard_endpoint, guarded_client};
-use super::tokens::{oauth_failure_reason, persist, post_form};
+use super::tokens::{due_refresh, exchange_refresh, oauth_failure_reason, persist, post_form};
 use super::types::{AuthDetection, PendingAuthorization, TokenResponse};
 use crate::error::{Error, Result};
 use crate::transport::http::McpHttpClient;
@@ -93,8 +93,9 @@ impl OAuthFlow {
     /// trust turns this on. Off by default: a desktop host signs in to loopback
     /// development servers. The token endpoint is re-checked when a code is
     /// exchanged, so a host re-pointed between `begin` and `complete` is
-    /// refused too. [`refresh_if_expired`](super::refresh_if_expired) does not
-    /// re-check: it only ever posts to an endpoint this guard already passed.
+    /// refused too, and again by [`Self::refresh`] before each refresh. The
+    /// free [`refresh_if_expired`](super::refresh_if_expired) does not
+    /// re-check; a host that turns this on refreshes through [`Self::refresh`].
     #[must_use]
     pub fn require_public_endpoints(mut self) -> Self {
         self.public_endpoints_only = true;
@@ -329,6 +330,33 @@ impl OAuthFlow {
             "completed an oauth authorization and stored the token"
         );
         Ok(pending.server_id)
+    }
+
+    /// Mints a new access token when the stored one has expired, or is about
+    /// to, as [`refresh_if_expired`](super::refresh_if_expired) does.
+    ///
+    /// Returns whether a refresh happened. Under
+    /// [`Self::require_public_endpoints`] the bundle's token endpoint is
+    /// checked again, and the refresh posted over a client pinned to the
+    /// addresses it was checked against, so a bundle stored by an older build
+    /// or edited in a host's store cannot aim a refresh at an internal address.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::MalformedResponse`] when the stored bundle cannot be
+    /// read, when the token endpoint is refused by the guard, or when it answers
+    /// with something unusable; [`Error::Http`] when it answers with a failure
+    /// status; and [`Error::Transport`] when it cannot be reached.
+    pub async fn refresh<S>(&self, store: &S, server_id: &str) -> Result<bool>
+    where
+        S: OAuthCredentialStore + ?Sized,
+    {
+        let Some(bundle) = due_refresh(store, server_id).await? else {
+            return Ok(false);
+        };
+        let guarded_http = self.token_client(&bundle.token_endpoint).await?;
+        let http = guarded_http.as_ref().unwrap_or(&self.http);
+        exchange_refresh(store, http, server_id, &bundle).await
     }
 
     /// The server a parked authorization is for, without consuming it.

@@ -1229,3 +1229,10 @@ fn a_kind_serializes_as_the_same_spelling_it_reports() {
 
 #[path = "mod_host_store_tests.rs"]
 mod host_store;
+
+// ---------------------------------------------------------------------------
+// The flow's own refresh
+// ---------------------------------------------------------------------------
+
+#[path = "mod_refresh_tests.rs"]
+mod flow_refresh;

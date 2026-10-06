@@ -33,21 +33,25 @@ pub(super) struct PendingAuthorization {
 
 /// The bookkeeping needed to mint a new access token without another sign-in.
 ///
-/// Stored beside the access token under the reserved bundle key. The access
-/// token itself is the `Authorization` header value, so the ordinary connect
-/// path needs no special case for an OAuth server.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub(super) struct OAuthBundle {
+/// Stored as JSON beside the access token under
+/// [`OAUTH_BUNDLE_KEY`](super::OAUTH_BUNDLE_KEY). The access token itself is
+/// the `Authorization` header value, so the ordinary connect path needs no
+/// special case for an OAuth server. Public so a host keeping credentials in
+/// its own store can read the bundle it holds — for an expiry it shows, or to
+/// migrate one — without restating its shape. It holds a client secret and a
+/// refresh token: never log or display it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OAuthBundle {
     /// The refresh token, when the server issued one.
-    pub(super) refresh_token: Option<String>,
+    pub refresh_token: Option<String>,
     /// The registered client.
-    pub(super) client_id: String,
+    pub client_id: String,
     /// The client secret, when there is one.
-    pub(super) client_secret: Option<String>,
+    pub client_secret: Option<String>,
     /// Where to refresh.
-    pub(super) token_endpoint: String,
+    pub token_endpoint: String,
     /// When the current access token expires, in Unix seconds. Best effort.
-    pub(super) expires_at: u64,
+    pub expires_at: u64,
 }
 
 /// A parsed token-endpoint reply.
