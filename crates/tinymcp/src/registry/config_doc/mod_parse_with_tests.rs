@@ -47,7 +47,7 @@ fn the_extension_fields_are_read() {
         &ParseOptions::default(),
     )
     .unwrap();
-    assert!(report.rejected.is_empty());
+    assert_eq!(report.rejected, Vec::new());
     let notion = &report.declared[0];
     assert_eq!(notion.allowed_tools, ["search", "fetch"]);
     assert_eq!(notion.disallowed_tools, ["delete"]);
@@ -65,7 +65,7 @@ fn the_strict_parse_still_refuses_the_extension_fields() {
         "`a` has a `timeoutSecs` field this host doesn't understand; it accepts url, headers, command, args, env, description and enabled"
     );
     let declared = parse(&json!({ "mcpServers": { "a": { "command": "npx" } } })).unwrap();
-    assert!(declared[0].allowed_tools.is_empty());
+    assert_eq!(declared[0].allowed_tools, Vec::<String>::new());
     assert_eq!(declared[0].timeout_secs, None);
     assert!(declared[0].host_fields.is_empty());
 }
@@ -160,7 +160,7 @@ fn null_extension_fields_read_as_absent() {
         &host(),
     )
     .unwrap();
-    assert!(report.declared[0].allowed_tools.is_empty());
+    assert_eq!(report.declared[0].allowed_tools, Vec::<String>::new());
     assert_eq!(report.declared[0].timeout_secs, None);
 }
 
