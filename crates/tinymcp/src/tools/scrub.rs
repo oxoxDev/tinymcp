@@ -140,7 +140,8 @@ impl SecretScrubber {
     ///
     /// For credentials the server's own configuration does not carry: a token
     /// a host keeps in its own secret store, or a value it injected some other
-    /// way. Each is matched as typed and URL-encoded; blank values are skipped.
+    /// way. Each is matched as typed and URL-encoded, anywhere in the text even
+    /// when short; blank values are skipped.
     #[must_use]
     pub fn with_secrets(mut self, secrets: impl IntoIterator<Item = String>) -> Self {
         for secret in secrets {
@@ -150,8 +151,10 @@ impl SecretScrubber {
             }
             let encoded = urlencoding::encode(secret).into_owned();
             if encoded != secret {
+                self.strict.push(encoded.clone());
                 self.secrets.push(encoded);
             }
+            self.strict.push(secret.to_string());
             self.secrets.push(secret.to_string());
         }
         sort_longest_first(&mut self.secrets);

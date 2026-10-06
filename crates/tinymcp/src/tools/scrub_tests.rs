@@ -155,3 +155,18 @@ fn extra_secrets_join_the_configured_ones_longest_first() {
     ));
     assert!(!format!("{:?}", result.content).contains("configured-token"));
 }
+
+#[test]
+fn a_short_extra_secret_is_redacted_inside_larger_text() {
+    let scrubber = SecretScrubber::new(&McpAuthConfig::None, "https://example.com/mcp")
+        .with_secrets(["k9".to_string()]);
+    assert_eq!(
+        scrubber.scrub("token=xk9y and k9"),
+        "token=x[redacted]y and [redacted]"
+    );
+    let mut value = json!({ "k9": "a", "tool_k9x": "b" });
+    scrubber.scrub_value(&mut value);
+    let map = value.as_object().unwrap();
+    assert!(map.contains_key("[redacted]"), "{value}");
+    assert!(map.contains_key("tool_k9x"), "{value}");
+}
