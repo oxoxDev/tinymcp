@@ -220,6 +220,9 @@ refusing the document. Credentials are write-only in both.
 `OAuthCredentialStore`, re-checking the token endpoint when
 `require_public_endpoints()` is set; the free `refresh_if_expired` does not
 check. `registry::OAuthBundle` is the stored refresh bundle's shape.
+`OAuthFlow::with_client_name` sets the name dynamic registration sends, which
+the authorization server shows on its consent screen; it defaults to
+`DEFAULT_CLIENT_NAME` (`TinyMCP`).
 
 ## Static linking
 
