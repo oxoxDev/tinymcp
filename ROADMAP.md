@@ -18,6 +18,9 @@ out of scope. A roadmap that lists everything is a roadmap nobody trusts.
   for host metering and failure surfacing (contract 1.3)
 - `mcp.json` reading for hosts with their own store (`parse_with`), and a
   guarded OAuth refresh on the flow
+- official-registry listings with one row per server at its latest version,
+  the server's declared icon, per-request time budgets, and cached answers
+  with a reported freshness when the registry stalls (contract 1.4)
 
 ## Next
 

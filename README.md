@@ -205,6 +205,29 @@ Enable the `tools` feature to expose each server tool as a
 `tinytools` is a git dependency so a host that links another checkout of it can
 `[patch]` the two into one package.
 
+## Browsing the catalogs
+
+`McpRegistry::registry_search` lists the official MCP registry, plus Smithery
+when a key is configured.
+
+- **One row per server.** The official adapter asks for `version=latest`, and
+  when a page still lists several versions of a server it keeps the one marked
+  `isLatest`. A detail lookup takes the same version.
+- **Icons** come from the registry's `icons[]`: a raster image ahead of an SVG,
+  an SVG when it is the only one, and the legacy `iconUrl` otherwise.
+- **Time budgets** are per request kind (`registry::RegistryTimeouts`): connect
+  5 s, browse 15 s, search 8 s, detail 12 s. A request that runs out is
+  `Error::RegistryTimeout` (`errors::REGISTRY_TIMEOUT` on the bus), and
+  `Error::is_registry_unavailable` groups it with transport failures and 408,
+  429 and 5xx answers.
+- **When the registry cannot answer**, a listing is served from the cache: an
+  earlier answer to the same request first (`RegistryFreshness::Cached`), then,
+  for the first page of a search, cached catalog rows matching every word of
+  the query (`RegistryFreshness::LocalFallback`). Only when neither exists does
+  the error reach the caller. A listing that timed out skips the network for
+  the next 60 s. `RegistrySearchPage::freshness` (contract 1.4) tells a host
+  which kind of answer it got.
+
 ## `mcp.json` and OAuth for hosts with their own store
 
 `registry::config_doc` reads and writes the `{ "mcpServers": { … } }` document.
