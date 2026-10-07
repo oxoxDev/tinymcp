@@ -5,6 +5,8 @@
 //! exception, marked below, where permissiveness caused the bug it was supposed
 //! to prevent.
 
+use std::collections::HashMap;
+
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -30,21 +32,41 @@ pub(super) struct OfficialListResponse {
 }
 
 impl OfficialListResponse {
-    /// The rows worth showing, deduplicated by name.
+    /// The rows worth showing, one per server.
     ///
     /// Drops anything that cannot actually be installed and anything the
     /// registry has deprecated. Both are noise: a row a user cannot install is
     /// a dead end they can only discover by trying.
+    ///
+    /// A page can list several versions of one server. The one the registry
+    /// marks latest is kept; without that mark, the last one listed is, since
+    /// the registry lists a server's versions oldest first. Each server keeps
+    /// the position of its first row.
     pub(super) fn into_summaries(self) -> Vec<RegistryServerSummary> {
-        let mut seen = std::collections::HashSet::new();
+        let mut order: Vec<String> = Vec::new();
+        let mut chosen: HashMap<String, OfficialServerEnvelope> = HashMap::new();
 
-        self.servers
+        for envelope in self
+            .servers
             .into_iter()
             .filter(|envelope| envelope.is_installable() && !envelope.is_deprecated())
-            .filter_map(|envelope| {
-                seen.insert(envelope.server.name.clone())
-                    .then(|| envelope.server.into_summary())
-            })
+        {
+            match chosen.get(&envelope.server.name) {
+                Some(current) if current.is_latest() => {}
+                Some(_) => {
+                    chosen.insert(envelope.server.name.clone(), envelope);
+                }
+                None => {
+                    order.push(envelope.server.name.clone());
+                    chosen.insert(envelope.server.name.clone(), envelope);
+                }
+            }
+        }
+
+        order
+            .iter()
+            .filter_map(|name| chosen.remove(name))
+            .map(|envelope| envelope.server.into_summary())
             .collect()
     }
 
@@ -95,13 +117,43 @@ impl OfficialServerEnvelope {
     /// Absent metadata counts as not deprecated, which is what a row cached by
     /// an older build looks like.
     fn is_deprecated(&self) -> bool {
-        self.meta
-            .as_ref()
-            .and_then(|meta| meta.get(REGISTRY_META_KEY))
+        registry_meta(self.meta.as_ref())
             .and_then(|registry| registry.get("status"))
             .and_then(Value::as_str)
             == Some(STATUS_DEPRECATED)
     }
+
+    /// Whether the registry marks this version as the server's latest.
+    fn is_latest(&self) -> bool {
+        marked_latest(self.meta.as_ref())
+    }
+}
+
+/// The registry's own bookkeeping inside a row's `_meta`.
+fn registry_meta(meta: Option<&Value>) -> Option<&Value> {
+    meta.and_then(|meta| meta.get(REGISTRY_META_KEY))
+}
+
+/// Whether a row's `_meta` marks it as the server's latest version.
+fn marked_latest(meta: Option<&Value>) -> bool {
+    registry_meta(meta)
+        .and_then(|registry| registry.get("isLatest"))
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+/// The server record to use from a versions response.
+///
+/// The version the registry marks latest, or the first one listed when none
+/// is marked.
+pub(super) fn latest_version(document: &Value) -> Option<&Value> {
+    let envelopes = document.get("servers")?.as_array()?;
+
+    envelopes
+        .iter()
+        .find(|envelope| marked_latest(envelope.get("_meta")))
+        .or_else(|| envelopes.first())
+        .and_then(|envelope| envelope.get("server"))
 }
 
 /// One server, as the official registry describes it.

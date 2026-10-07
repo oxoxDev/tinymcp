@@ -153,6 +153,118 @@ fn a_repeated_name_appears_once() {
 }
 
 // ---------------------------------------------------------------------------
+// Versions
+// ---------------------------------------------------------------------------
+
+/// An envelope for one version of `name`, marked latest or not.
+fn version(name: &str, title: &str, latest: Option<bool>) -> Value {
+    let mut row = json!({
+        "server": {
+            "name": name,
+            "title": title,
+            "remotes": [{ "url": "https://api.test/mcp" }],
+        },
+    });
+    if let Some(latest) = latest {
+        row["_meta"] = json!({
+            "io.modelcontextprotocol.registry/official": { "status": "active", "isLatest": latest },
+        });
+    }
+    row
+}
+
+#[test]
+fn a_page_listing_every_version_keeps_one_row_per_server() {
+    let rows = recorded(EVERY_VERSION_PAGE);
+    let names: std::collections::BTreeSet<&str> =
+        rows.iter().map(|row| row.qualified_name.as_str()).collect();
+
+    assert_eq!(rows.len(), 11);
+    assert_eq!(names.len(), rows.len(), "every server appears once");
+}
+
+#[test]
+fn the_version_marked_latest_is_the_one_kept() {
+    let rows = recorded(EVERY_VERSION_PAGE);
+    let brainy = rows
+        .iter()
+        .find(|row| row.qualified_name == "ae.brainy/grocery-prices")
+        .expect("listed");
+
+    assert_eq!(brainy.display_name, "Brainy Prices — UAE Cost of Living");
+}
+
+#[test]
+fn a_recorded_latest_page_keeps_every_row() {
+    assert_eq!(recorded(LATEST_PAGE).len(), 20);
+}
+
+#[test]
+fn a_page_keeps_the_order_of_each_server_first_row() {
+    let rows = recorded(EVERY_VERSION_PAGE);
+
+    assert_eq!(rows[0].qualified_name, "ac.inference.sh/mcp");
+    assert_eq!(rows[1].qualified_name, "ac.snag/snag");
+}
+
+#[test]
+fn a_latest_row_is_not_displaced_by_a_later_one() {
+    let response = list_response(
+        &json!([
+            version("same/server", "Latest", Some(true)),
+            version("same/server", "Listed after", Some(false)),
+        ]),
+        None,
+    );
+
+    assert_eq!(response.into_summaries()[0].display_name, "Latest");
+}
+
+#[test]
+fn without_a_latest_mark_the_last_listed_version_is_kept() {
+    let response = list_response(
+        &json!([
+            version("same/server", "Older", None),
+            version("same/server", "Newer", None),
+        ]),
+        None,
+    );
+
+    let rows = response.into_summaries();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].display_name, "Newer");
+}
+
+#[test]
+fn a_versions_document_yields_the_version_marked_latest() {
+    let document = json!({
+        "servers": [
+            version("same/server", "Older", Some(false)),
+            version("same/server", "Latest", Some(true)),
+        ],
+    });
+
+    let latest = super::types::latest_version(&document).expect("a version");
+    assert_eq!(latest["title"], "Latest");
+}
+
+#[test]
+fn a_versions_document_with_no_mark_yields_its_first_version() {
+    let document = json!({
+        "servers": [version("same/server", "First", None), version("same/server", "Second", None)],
+    });
+
+    let latest = super::types::latest_version(&document).expect("a version");
+    assert_eq!(latest["title"], "First");
+}
+
+#[test]
+fn a_versions_document_with_no_servers_yields_nothing() {
+    assert!(super::types::latest_version(&json!({})).is_none());
+    assert!(super::types::latest_version(&json!({ "servers": [] })).is_none());
+}
+
+// ---------------------------------------------------------------------------
 // Names
 // ---------------------------------------------------------------------------
 
@@ -198,6 +310,10 @@ fn a_name_is_derived_from_its_last_segment_with_separators_spaced() {
 
 /// A page recorded from the live registry with `version=latest`.
 const LATEST_PAGE: &str = include_str!("fixtures/latest_page.json");
+
+/// A page recorded from the live registry without `version=latest`, so it
+/// lists every version of each server.
+const EVERY_VERSION_PAGE: &str = include_str!("fixtures/every_version_page.json");
 
 /// The rows of a recorded page.
 fn recorded(page: &str) -> Vec<tinymcp_bus::RegistryServerSummary> {
@@ -730,7 +846,7 @@ fn a_response_with_no_metadata_has_no_cursor() {
 fn a_cache_key_separates_query_page_and_size() {
     assert_eq!(
         search_cache_key("weather", 2, 50),
-        "mcp_official:search:weather:2:50"
+        "mcp_official:search:latest:weather:2:50"
     );
     assert_ne!(search_cache_key("a", 1, 20), search_cache_key("a", 2, 20));
     assert_ne!(search_cache_key("a", 1, 20), search_cache_key("a", 1, 50));
@@ -766,6 +882,7 @@ use tinymcp_bus::McpRegistryAuthConfig;
 struct Seen {
     pages: AtomicUsize,
     cursors: Mutex<Vec<Option<String>>>,
+    versions: Mutex<Vec<Option<String>>>,
     authorization: Mutex<Option<String>>,
     detail_path: Mutex<Option<String>>,
 }
@@ -811,6 +928,7 @@ async fn paged_registry(pages: usize) -> (String, Arc<Seen>) {
 
                     let cursor = param(&uri, "cursor");
                     seen.cursors.lock().push(cursor.clone());
+                    seen.versions.lock().push(param(&uri, "version"));
 
                     let page: usize = cursor
                         .as_deref()
@@ -896,6 +1014,21 @@ async fn the_first_page_is_fetched_without_a_cursor() {
 
     assert_eq!(servers.len(), 1);
     assert_eq!(seen.cursors.lock().as_slice(), &[None]);
+}
+
+#[tokio::test]
+async fn every_page_asks_for_the_latest_version_only() {
+    let (base, seen) = paged_registry(3).await;
+
+    adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 2, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        seen.versions.lock().as_slice(),
+        &[Some("latest".to_string()), Some("latest".to_string())]
+    );
 }
 
 #[tokio::test]
@@ -1157,6 +1290,26 @@ async fn a_detail_lookup_takes_the_newest_version() {
         .expect("the lookup succeeds");
 
     assert_eq!(detail.qualified_name, "@acme/weather");
+}
+
+#[tokio::test]
+async fn a_detail_lookup_takes_the_version_marked_latest() {
+    let app = Router::new().fallback(get(|| async {
+        axum::Json(json!({
+            "servers": [
+                version("@acme/weather", "Weather 1", Some(false)),
+                version("@acme/weather", "Weather 2", Some(true)),
+            ],
+        }))
+    }));
+    let base = serve(app).await;
+
+    let detail = adapter()
+        .get(&store(), &auth_at(&base), "@acme/weather")
+        .await
+        .expect("the lookup succeeds");
+
+    assert_eq!(detail.display_name, "Weather 2");
 }
 
 #[tokio::test]

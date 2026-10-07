@@ -1,8 +1,9 @@
 //! The official `modelcontextprotocol/registry` catalog.
 //!
-//! `GET /v0/servers` lists; `GET /v0/servers/{name}/versions` details — the
-//! registry has no single-server endpoint, so a detail lookup reads the version
-//! list and takes the newest.
+//! `GET /v0/servers?version=latest` lists one row per server;
+//! `GET /v0/servers/{name}/versions` details — the registry has no
+//! single-server endpoint, so a detail lookup reads the version list and takes
+//! the one marked latest.
 //!
 //! # Pages over cursors
 //!
@@ -35,7 +36,7 @@ use std::time::Duration;
 use parking_lot::Mutex;
 use serde_json::Value;
 
-use self::types::{OfficialListResponse, OfficialServer};
+use self::types::{OfficialListResponse, OfficialServer, latest_version};
 use super::encode::encode_path_segment;
 use super::shared::{MAX_ERROR_BODY_BYTES, cache, truncate};
 use super::types::non_blank_env;
@@ -178,18 +179,14 @@ impl McpOfficialRegistry {
         let document: Value = serde_json::from_str(&body)
             .map_err(|error| Error::malformed(format!("official versions response: {error}")))?;
 
-        // The versions endpoint answers with the same envelope array as the
-        // list endpoint; the newest version leads it.
-        let newest = document
-            .pointer("/servers/0/server")
-            .ok_or_else(|| Error::UnknownServer {
-                server: qualified_name.to_string(),
-            })?;
+        let latest = latest_version(&document).ok_or_else(|| Error::UnknownServer {
+            server: qualified_name.to_string(),
+        })?;
 
         // Cached as the inner object, which is what the hit path above reads.
-        cache(store, &cache_key, &newest.to_string());
+        cache(store, &cache_key, &latest.to_string());
 
-        let server: OfficialServer = serde_json::from_value(newest.clone())
+        let server: OfficialServer = serde_json::from_value(latest.clone())
             .map_err(|error| Error::malformed(format!("official server record: {error}")))?;
 
         Ok(server.into_detail())
@@ -275,7 +272,8 @@ impl McpOfficialRegistry {
         let url = format!("{}/v0/servers", base_url(auth));
         let mut request = self
             .request(auth, &url)
-            .query(&[("limit", limit.to_string())]);
+            .query(&[("limit", limit.to_string())])
+            .query(&[("version", "latest")]);
         if !query.is_empty() {
             request = request.query(&[("search", query)]);
         }
@@ -322,7 +320,7 @@ impl McpOfficialRegistry {
 
 /// The cache key for one page of one search.
 fn search_cache_key(query: &str, page: u32, page_size: u32) -> String {
-    format!("mcp_official:search:{query}:{page}:{page_size}")
+    format!("mcp_official:search:latest:{query}:{page}:{page_size}")
 }
 
 /// Records which cursor produced a page.

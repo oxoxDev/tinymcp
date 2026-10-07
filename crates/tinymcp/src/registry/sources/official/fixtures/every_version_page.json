@@ -1,0 +1,579 @@
+{
+  "servers": [
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ac.inference.sh/mcp",
+        "description": "Run 150+ AI apps — image, video, audio, LLMs, 3D and more. Browse, execute, stream results.",
+        "title": "inference.sh",
+        "version": "1.0.0",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://sh.inference.ac"
+          },
+          {
+            "type": "streamable-http",
+            "url": "https://api.inference.sh/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-04-13T17:32:20.852269Z",
+          "publishedAt": "2026-04-13T17:32:20.852269Z",
+          "updatedAt": "2026-04-13T17:32:20.852269Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ac.inference.sh/mcp",
+        "description": "Run 150+ AI apps — image, video, audio, LLMs, 3D and more. Browse, execute, stream results.",
+        "title": "inference.sh",
+        "version": "1.0.1",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://sh.inference.ac"
+          },
+          {
+            "type": "streamable-http",
+            "url": "https://api.inference.sh/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-04-13T17:33:26.613537Z",
+          "publishedAt": "2026-04-13T17:33:26.613537Z",
+          "updatedAt": "2026-04-13T17:33:26.613537Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ac.inference.sh/mcp",
+        "description": "run any ai model. compose agents, stack knowledge, connect tools. one api, pay per run.",
+        "title": "inference.sh",
+        "version": "2.0.0",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://sh.inference.ac"
+          },
+          {
+            "type": "streamable-http",
+            "url": "https://api.inference.sh/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-07-20T18:02:33.295284Z",
+          "publishedAt": "2026-07-20T18:02:33.295284Z",
+          "updatedAt": "2026-07-20T18:02:33.295284Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ac.inference.sh/mcp",
+        "description": "run any ai model. compose agents, stack knowledge, connect tools. one api, pay per run.",
+        "title": "inference.sh",
+        "version": "2.0.1",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://api.inference.sh/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-07-27T10:44:51.359634Z",
+          "publishedAt": "2026-07-27T10:44:51.359634Z",
+          "updatedAt": "2026-07-27T10:44:51.359634Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ac.snag/snag",
+        "description": "Gives your coding agent the captured console, network, replay and screenshot evidence for a bug.",
+        "version": "1.0.0",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.snag.ac/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-09-09T10:35:53.194664Z",
+          "publishedAt": "2026-09-09T10:35:53.194664Z",
+          "updatedAt": "2026-09-09T10:35:53.194664Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ac.tandem/docs-mcp",
+        "description": "Remote MCP server for Tandem docs, install guides, SDKs, workflows, and agent setup help.",
+        "repository": {
+          "url": "https://github.com/frumu-ai/tandem",
+          "source": "github"
+        },
+        "version": "0.3.0",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://tandem.ac/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-04-02T11:22:40.005172Z",
+          "publishedAt": "2026-04-02T11:22:40.005172Z",
+          "updatedAt": "2026-04-02T11:22:40.005172Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ac.tandem/docs-mcp",
+        "description": "Remote MCP server for Tandem docs, install guides, SDKs, workflows, and agent setup help.",
+        "repository": {
+          "url": "https://github.com/frumu-ai/tandem",
+          "source": "github"
+        },
+        "version": "0.3.1",
+        "websiteUrl": "https://tandem.ac/docs-mcp",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://tandem.ac/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-04-02T11:40:41.429277Z",
+          "publishedAt": "2026-04-02T11:40:41.429277Z",
+          "updatedAt": "2026-04-02T11:40:41.429277Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ac.tandem/docs-mcp",
+        "description": "Remote MCP server for Tandem docs, install guides, SDKs, workflows, and agent setup help.",
+        "repository": {
+          "url": "https://github.com/frumu-ai/tandem",
+          "source": "github"
+        },
+        "version": "0.3.2",
+        "websiteUrl": "https://tandem.ac/docs-mcp",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://tandem.ac/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-04-22T21:06:34.500049Z",
+          "publishedAt": "2026-04-22T21:06:34.500049Z",
+          "updatedAt": "2026-04-22T21:06:34.500049Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ad.getle/leads",
+        "description": "Find B2B leads with verified work emails, find and verify emails, and run cold email outreach.",
+        "title": "Getlead",
+        "repository": {
+          "url": "https://github.com/Adgrowofficial/getlead-mcp",
+          "source": "github"
+        },
+        "version": "1.0.0",
+        "websiteUrl": "https://getle.ad/mcp",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.getle.ad/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-09-26T12:28:37.779048Z",
+          "publishedAt": "2026-09-26T12:28:37.779048Z",
+          "updatedAt": "2026-09-26T12:28:37.779048Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ad.inside/inside-ads",
+        "description": "Telegram ad exchange: estimate reach and cost with no account, then create and run campaigns.",
+        "title": "Inside Ads",
+        "version": "1.0.0",
+        "websiteUrl": "https://inside.ad",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://app.inside.ad/api/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-08-18T20:55:46.452926Z",
+          "publishedAt": "2026-08-18T20:55:46.452926Z",
+          "updatedAt": "2026-08-18T20:55:46.452926Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.brainy/grocery-prices",
+        "description": "Compare Dubai grocery lists, observed prices, delivery rules and indicative online offers in AED.",
+        "title": "Dubai Grocery Prices",
+        "version": "1.0.0",
+        "websiteUrl": "https://prices.brainy.ae/developers.html",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://prices.brainy.ae/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-09-30T10:34:55.977998Z",
+          "publishedAt": "2026-09-30T10:34:55.977998Z",
+          "updatedAt": "2026-09-30T10:34:55.977998Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.brainy/grocery-prices",
+        "description": "Dubai cost of living: groceries, schools, fuel, rent, utilities, phone plans, electronics and visas",
+        "title": "Dubai Cost of Living Prices",
+        "version": "1.1.0",
+        "websiteUrl": "https://prices.brainy.ae/developers.html",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://prices.brainy.ae/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-10-02T04:58:59.331523Z",
+          "publishedAt": "2026-10-02T04:58:59.331523Z",
+          "updatedAt": "2026-10-02T04:58:59.331523Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.brainy/grocery-prices",
+        "description": "Source-backed UAE costs: groceries, schools, housing, transport, utilities, telecom and relocation",
+        "title": "Brainy Prices — UAE Cost of Living",
+        "version": "2.0.0",
+        "websiteUrl": "https://prices.brainy.ae/developers.html",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://prices.brainy.ae/mcp/v2"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-10-04T02:29:51.000704Z",
+          "publishedAt": "2026-10-04T02:29:51.000704Z",
+          "updatedAt": "2026-10-04T02:29:51.000704Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.datadubai/dubai-real-estate",
+        "description": "Dubai property prices, AED/sqft, sales, rents, yields and projects from DLD registered transactions.",
+        "title": "Dubai Data — Dubai real estate statistics",
+        "repository": {
+          "url": "https://github.com/datadubai/dubai-real-estate-dld",
+          "source": "github"
+        },
+        "version": "1.1.0",
+        "websiteUrl": "https://datadubai.ae/mcp/",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.datadubai.ae/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-09-30T08:30:47.911063Z",
+          "publishedAt": "2026-09-30T08:30:47.911063Z",
+          "updatedAt": "2026-09-30T08:30:47.911063Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.grovisor/grotax",
+        "description": "UAE Corporate Tax: CT computation, SBR, penalties, free zone test, TP and health-check.",
+        "title": "groTAX by Grovisor",
+        "version": "1.2.0",
+        "websiteUrl": "https://grovisor.ae/tools",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.grovisor.ae/"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-10-02T03:01:23.583792Z",
+          "publishedAt": "2026-10-02T03:01:23.583792Z",
+          "updatedAt": "2026-10-02T03:01:23.583792Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.grovisor/grotax",
+        "description": "UAE Corporate Tax: CT computation, SBR, penalties, free zone test, TP and health-check.",
+        "title": "groTAX by Grovisor",
+        "version": "1.3.0",
+        "websiteUrl": "https://grovisor.ae/tools",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.grovisor.ae/"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-10-06T01:10:14.813856Z",
+          "publishedAt": "2026-10-06T01:10:14.813856Z",
+          "updatedAt": "2026-10-06T01:10:14.813856Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.plantguide/dubai-gardening",
+        "description": "What to plant in Dubai each month, plant care in the heat, garden styles and Garden Care prices.",
+        "title": "Plant Guide: Dubai gardening research",
+        "version": "1.0.0",
+        "websiteUrl": "https://plantguide.ae/agents",
+        "icons": [
+          {
+            "src": "https://plantguide.ae/brand/plantguide-mark.svg",
+            "mimeType": "image/svg+xml",
+            "sizes": [
+              "any"
+            ]
+          },
+          {
+            "src": "https://plantguide.ae/icons/icon-512.png",
+            "mimeType": "image/png",
+            "sizes": [
+              "512x512"
+            ]
+          }
+        ],
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://plantguide.ae/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-10-07T06:55:35.364125Z",
+          "publishedAt": "2026-10-07T06:55:35.364125Z",
+          "updatedAt": "2026-10-07T06:55:35.364125Z",
+          "isLatest": false
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.plantguide/dubai-gardening",
+        "description": "What to plant in Dubai, indoor plants, plant care in the heat, garden styles and Garden Care prices.",
+        "title": "Plant Guide: Dubai gardening research",
+        "version": "1.1.0",
+        "websiteUrl": "https://plantguide.ae/agents",
+        "icons": [
+          {
+            "src": "https://plantguide.ae/brand/plantguide-mark.svg",
+            "mimeType": "image/svg+xml",
+            "sizes": [
+              "any"
+            ]
+          },
+          {
+            "src": "https://plantguide.ae/icons/icon-512.png",
+            "mimeType": "image/png",
+            "sizes": [
+              "512x512"
+            ]
+          }
+        ],
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://plantguide.ae/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-10-07T08:44:40.122336Z",
+          "publishedAt": "2026-10-07T08:44:40.122336Z",
+          "updatedAt": "2026-10-07T08:44:40.122336Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.projectory/mcp",
+        "description": "Find UAE off-plan developments and registered residential sales.",
+        "title": "Projectory",
+        "version": "0.6.0",
+        "websiteUrl": "https://projectory.ae/mcp/",
+        "icons": [
+          {
+            "src": "https://projectory.ae/apple-touch-icon.png",
+            "mimeType": "image/png",
+            "sizes": [
+              "180x180"
+            ]
+          }
+        ],
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://mcp.projectory.ae/mcp"
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-09-29T20:37:54.5633Z",
+          "publishedAt": "2026-09-29T20:37:54.5633Z",
+          "updatedAt": "2026-09-29T20:37:54.5633Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "ae.propick/propick",
+        "description": "Manage your real-estate stock on Propick (Dubai): bulk listing sync, lookups and run reports.",
+        "title": "Propick Integration MCP",
+        "version": "1.0.0",
+        "websiteUrl": "https://propick.ae",
+        "remotes": [
+          {
+            "type": "streamable-http",
+            "url": "https://propick.ae/mcp",
+            "headers": [
+              {
+                "description": "Bearer <integration key> (ppk_live_...) issued in the Propick cabinet when creating an import channel",
+                "isRequired": true,
+                "isSecret": true,
+                "name": "Authorization"
+              }
+            ]
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-08-25T11:16:56.879334Z",
+          "publishedAt": "2026-08-25T11:16:56.879334Z",
+          "updatedAt": "2026-08-25T11:16:56.879334Z",
+          "isLatest": true
+        }
+      }
+    }
+  ],
+  "metadata": {
+    "nextCursor": "ae.propick/propick:1.0.0",
+    "count": 20
+  }
+}
