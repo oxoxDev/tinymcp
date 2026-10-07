@@ -224,6 +224,30 @@ check. `registry::OAuthBundle` is the stored refresh bundle's shape.
 the authorization server shows on its consent screen; it defaults to
 `DEFAULT_CLIENT_NAME` (`TinyMCP`).
 
+OAuth discovery starts from the 401. When its challenge names
+`resource_metadata`, that protected-resource metadata is followed. When a
+Bearer challenge names none, the server's origin is checked in this order:
+
+1. `/.well-known/oauth-protected-resource` under the endpoint's path, then at
+   the root. A document whose `resource` is on the same origin is followed to
+   its authorization servers. A document that is authorization-server metadata
+   whose `issuer` is the origin is used as the authorization server; some
+   servers publish theirs there.
+2. The origin's own `/.well-known/oauth-authorization-server`, then
+   `/.well-known/openid-configuration`, accepted only when the `issuer` is the
+   origin (one trailing slash tolerated). This covers servers on the
+   2025-03-26 authorization spec, where the MCP server is its own
+   authorization server.
+
+Default `/authorize` and `/token` paths are never guessed. Every lookup is a
+`GET` to the MCP origin over a client that follows no redirects, reads at most
+64 KiB and gives up after about five seconds. A 3xx, 401, 403, 404 or 410
+counts as absent. A 5xx or a network failure is retried on the next 401. When an
+authorization server with authorize and token endpoints turns up,
+`Error::Unauthorized::resource_metadata` names the document that yielded it, so
+`advertises_oauth` and the connection status report a sign-in. A Basic
+challenge is never looked up.
+
 ## Static linking
 
 Enable the `static-link` feature when compiling this module into a Rust host. It
