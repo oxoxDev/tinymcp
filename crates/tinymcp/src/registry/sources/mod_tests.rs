@@ -171,6 +171,52 @@ async fn a_detail_lookup_for_an_unknown_source_is_refused() {
     );
 }
 
+#[tokio::test]
+async fn a_smithery_detail_lookup_routes_to_smithery() {
+    let store = crate::registry::Store::open_in_memory().unwrap();
+    store
+        .cache(
+            "smithery:detail:@acme/weather",
+            &json!({ "qualifiedName": "@acme/weather", "displayName": "Weather" }).to_string(),
+        )
+        .unwrap();
+
+    let detail = registries(McpRegistryAuthConfig::default())
+        .get(&store, SOURCE_SMITHERY, "@acme/weather")
+        .await
+        .expect("served from the cache");
+
+    assert_eq!(detail.source, SOURCE_SMITHERY);
+}
+
+// ---------------------------------------------------------------------------
+// Search routing
+// ---------------------------------------------------------------------------
+
+#[tokio::test]
+async fn a_smithery_search_is_live_and_a_zero_page_size_means_the_default() {
+    let store = crate::registry::Store::open_in_memory().unwrap();
+    store
+        .cache(
+            "smithery:search:weather:1:20",
+            &json!({
+                "servers": [{ "qualifiedName": "@acme/weather", "displayName": "Weather" }],
+                "pagination": { "totalPages": 3 },
+            })
+            .to_string(),
+        )
+        .unwrap();
+
+    let page = registries(with_smithery_key())
+        .search(&store, RegistrySource::Smithery, Some("  weather "), 0, 0)
+        .await
+        .expect("served from the cache");
+
+    assert_eq!(page.servers[0].qualified_name, "@acme/weather");
+    assert_eq!(page.total_pages, 3);
+    assert_eq!(page.freshness, tinymcp_bus::RegistryFreshness::Live);
+}
+
 // ---------------------------------------------------------------------------
 // Smithery trust-signal scrubbing
 // ---------------------------------------------------------------------------
