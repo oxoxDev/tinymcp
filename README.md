@@ -237,8 +237,11 @@ when a key is configured.
   (`RegistryFreshness::Indexed`): every word must appear in the name, title or
   description, and matches rank curated servers first, then name or title
   matches, then description matches, each alphabetical. Until then a search
-  takes the path above. A failed page keeps what was synced and the next sync
-  resumes from it; at most one sync runs at a time; the index re-syncs after
+  takes the path above. One background run reads at most 200 pages and then
+  pauses; the next search or browse resumes it from the stored cursor, and
+  only a sync whose cursor ran out is used or prunes anything. A failed page
+  keeps what was synced and the next sync resumes from it; at most one sync
+  runs at a time; the index re-syncs after
   six hours (`registry::RegistryIndexSettings`, set with
   `McpOfficialRegistry::with_settings` and `Registries::with_official`).
   Browsing a page of the catalog is unchanged.
