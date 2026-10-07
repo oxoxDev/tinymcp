@@ -21,6 +21,8 @@ out of scope. A roadmap that lists everything is a roadmap nobody trusts.
 - official-registry listings with one row per server at its latest version,
   the server's declared icon, per-request time budgets, and cached answers
   with a reported freshness when the registry stalls (contract 1.4)
+- OAuth discovery for a 401 without `resource_metadata`, from the origin's
+  well-known protected-resource and authorization-server metadata
 
 ## Next
 
