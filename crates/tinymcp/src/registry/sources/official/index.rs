@@ -8,10 +8,12 @@
 //! # Syncing
 //!
 //! A sync walks `/v0/servers?version=latest` by cursor until the cursor runs
-//! out or [`RegistryIndexSettings::max_pages`] is reached, writing each page as
-//! it arrives. Each page has the browse budget. A page that fails stops the
-//! sync with what it wrote kept, and the next sync resumes from the cursor it
-//! stopped at; until then the next one waits out the registry cooldown.
+//! out, writing each page as it arrives. Each page has the browse budget. One
+//! run reads at most [`RegistryIndexSettings::max_pages`] pages and then
+//! pauses; the next search or browse resumes it from the stored cursor. A page
+//! that fails stops the sync with what it wrote kept, and the next sync resumes
+//! from the cursor it stopped at once the registry cooldown has passed. Only a
+//! sync whose cursor ran out is finished.
 //!
 //! A search or a browse starts a sync when none has finished for the
 //! configured catalog, when one was left unfinished, or when the last one is
@@ -166,7 +168,8 @@ impl OfficialIndex {
 
     /// Syncs the index, resuming an unfinished sync of the same catalog.
     ///
-    /// Returns how many pages the finished sync holds.
+    /// Returns how many pages the sync holds so far, finished or paused at the
+    /// page limit.
     ///
     /// # Errors
     ///
@@ -190,14 +193,15 @@ impl OfficialIndex {
             (None, 0)
         };
         let mut finished = pages > 0 && cursor.is_none();
+        let mut fetched: u32 = 0;
 
         while !finished {
-            if pages >= self.settings.max_pages {
-                tracing::warn!(
+            if fetched >= self.settings.max_pages {
+                tracing::debug!(
                     pages,
-                    "official catalog index sync reached its page limit; keeping what it has"
+                    "official catalog index sync paused at its page limit; a later request resumes it"
                 );
-                break;
+                return Ok(pages);
             }
 
             let body = self.fetch(auth, cursor.as_deref()).await?;
@@ -214,9 +218,15 @@ impl OfficialIndex {
                 .and_then(Value::as_str)
                 .filter(|next| !next.is_empty())
                 .map(ToString::to_string);
+            if next.is_some() && next == cursor {
+                return Err(Error::malformed(
+                    "official list response repeats the cursor it was asked for",
+                ));
+            }
             store.store_index_page(INDEX_SOURCE, &index_rows(&document), next.as_deref())?;
 
             pages += 1;
+            fetched += 1;
             finished = next.is_none();
             cursor = next;
         }

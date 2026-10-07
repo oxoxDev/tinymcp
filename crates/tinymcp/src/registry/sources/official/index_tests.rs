@@ -27,6 +27,8 @@ struct Upstream {
     failing_page: AtomicUsize,
     /// Answer every page with a body that is not a list.
     garbled: AtomicBool,
+    /// Answer every page with a next cursor naming that same page.
+    repeat_cursor: AtomicBool,
     /// How long each listing waits before answering.
     delay: Duration,
     requests: AtomicUsize,
@@ -108,7 +110,9 @@ async fn serve(upstream: Upstream) -> (String, Arc<Upstream>) {
 
                     let servers = upstream.pages.get(page - 1).cloned().unwrap_or_default();
                     let mut body = json!({ "servers": servers });
-                    if page < upstream.pages.len() {
+                    if upstream.repeat_cursor.load(Ordering::SeqCst) {
+                        body["metadata"] = json!({ "nextCursor": page.to_string() });
+                    } else if page < upstream.pages.len() {
                         body["metadata"] = json!({ "nextCursor": (page + 1).to_string() });
                     }
                     axum::Json(body).into_response()
@@ -324,7 +328,7 @@ async fn a_sync_resumed_after_its_last_page_was_written_just_finishes() {
 }
 
 #[tokio::test]
-async fn a_sync_stops_at_the_page_limit_and_keeps_what_it_has() {
+async fn a_sync_pauses_at_the_page_limit_and_the_next_run_resumes_it() {
     let (base, upstream) = serve(Upstream {
         pages: numbered_pages(5),
         ..Upstream::default()
@@ -339,12 +343,61 @@ async fn a_sync_stops_at_the_page_limit_and_keeps_what_it_has() {
         Duration::from_secs(60),
     );
 
-    let pages = index.sync(&store, &auth_at(&base)).await.unwrap();
-
-    assert_eq!(pages, 2);
-    assert_eq!(upstream.requests(), 2);
+    assert_eq!(index.sync(&store, &auth_at(&base)).await.unwrap(), 2);
     assert_eq!(indexed_names(&store).len(), 2);
+    assert!(!is_ready(&store, &base), "a paused sync is not finished");
+
+    assert_eq!(index.sync(&store, &auth_at(&base)).await.unwrap(), 4);
+    assert!(!is_ready(&store, &base));
+
+    assert_eq!(index.sync(&store, &auth_at(&base)).await.unwrap(), 5);
+    assert_eq!(upstream.requests(), 5, "no page is read twice");
+    assert_eq!(indexed_names(&store).len(), 5);
     assert!(is_ready(&store, &base));
+}
+
+#[tokio::test]
+async fn a_cursor_that_repeats_stops_the_sync_as_malformed() {
+    let (base, upstream) = serve(Upstream {
+        pages: numbered_pages(3),
+        repeat_cursor: AtomicBool::new(true),
+        ..Upstream::default()
+    })
+    .await;
+    let store = store();
+
+    let error = index().sync(&store, &auth_at(&base)).await.unwrap_err();
+
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
+    assert_eq!(upstream.requests(), 2);
+    assert!(!is_ready(&store, &base));
+}
+
+#[tokio::test]
+async fn a_refresh_paused_at_the_page_limit_prunes_nothing() {
+    let (base, _upstream) = serve(Upstream {
+        pages: numbered_pages(3),
+        ..Upstream::default()
+    })
+    .await;
+    let store = store();
+    synced(&base, &store).await;
+    let before = indexed_names(&store).len();
+    store.begin_index_sync(INDEX_SOURCE, &base).unwrap();
+    let index = index_with(
+        RegistryIndexSettings {
+            max_pages: 1,
+            ..RegistryIndexSettings::default()
+        },
+        Duration::from_secs(60),
+    );
+
+    index.sync(&store, &auth_at(&base)).await.unwrap();
+
+    assert_eq!(indexed_names(&store).len(), before);
 }
 
 #[tokio::test]

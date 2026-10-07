@@ -118,7 +118,8 @@ pub struct RegistryIndexSettings {
     /// How old the last finished sync may be before a search or browse starts
     /// another in the background.
     pub refresh: Duration,
-    /// The most pages one sync reads before it stops and keeps what it has.
+    /// The most pages one background run reads before it pauses. The next
+    /// search or browse resumes the sync from where it paused.
     pub max_pages: u32,
     /// How many servers each page asks for.
     pub page_size: u32,
