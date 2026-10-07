@@ -56,7 +56,12 @@ pub enum Error {
     Unauthorized {
         /// The redacted endpoint the 401 came from.
         endpoint: String,
-        /// The `resource_metadata` URL the challenge advertised, when it did.
+        /// The metadata URL that shows the server wants OAuth.
+        ///
+        /// The challenge's `resource_metadata` when it named one. For a Bearer
+        /// challenge that named none, the well-known document on the server's
+        /// origin that yielded an authorization server with authorize and token
+        /// endpoints. `None` when neither exists.
         ///
         /// Its presence is what distinguishes a server that wants OAuth from
         /// one that wants a static credential, so it drives which affordance a
@@ -472,7 +477,8 @@ impl Error {
         matches!(self, Self::MissingRuntime { .. })
     }
 
-    /// Whether the 401 advertised OAuth.
+    /// Whether the 401 advertised OAuth, in its challenge or through
+    /// authorization metadata published on the server's origin.
     ///
     /// `false` for every error that is not a 401. A server that advertises
     /// OAuth will refuse a pasted static token however valid it looks, so this
