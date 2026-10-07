@@ -11,7 +11,7 @@
 use serde_json::{Value, json};
 
 use super::types::{OfficialListResponse, OfficialServer};
-use super::{page_bound, search_cache_key};
+use super::{lead_with_curated, page_bound, search_cache_key};
 
 /// A list response wrapping `servers`.
 fn list_response(servers: &Value, next_cursor: Option<&str>) -> OfficialListResponse {
@@ -1989,12 +1989,12 @@ async fn the_network_is_tried_again_once_the_cooldown_ends() {
     state.set(UP);
 
     let page = adapter
-        .search(&store, &auth, &cursors(), "notion", 1, 20)
+        .search(&store, &auth, &cursors(), "acme", 1, 20)
         .await
         .expect("the registry answers again");
 
     assert_eq!(page.freshness, RegistryFreshness::Live);
-    assert_eq!(page.servers[0].qualified_name, "@acme/notion");
+    assert_eq!(page.servers[0].qualified_name, "@acme/acme");
 }
 
 #[tokio::test]
@@ -2303,4 +2303,67 @@ fn local_matches_from_details_are_capped_at_the_page_size() {
     let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 2).unwrap();
 
     assert_eq!(page.servers.len(), 2);
+}
+
+fn summaries(names: &[&str]) -> Vec<tinymcp_bus::RegistryServerSummary> {
+    list_response(
+        &Value::Array(names.iter().map(|name| envelope(name)).collect()),
+        None,
+    )
+    .into_summaries()
+}
+
+fn names(rows: &[tinymcp_bus::RegistryServerSummary]) -> Vec<&str> {
+    rows.iter().map(|row| row.qualified_name.as_str()).collect()
+}
+
+#[tokio::test]
+async fn a_live_search_leads_with_the_curated_server_the_registry_left_out() {
+    let (base, _state) = switchable_registry().await;
+
+    let page = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "slack", 1, 20)
+        .await
+        .expect("the registry answers");
+
+    assert_eq!(page.freshness, RegistryFreshness::Live);
+    assert_eq!(names_of(&page), ["com.slack/mcp", "@acme/slack"]);
+}
+
+#[test]
+fn a_curated_server_already_on_the_page_moves_to_the_head_as_the_registry_row() {
+    let mut rows = summaries(&["@acme/notion", "com.notion/mcp"]);
+    rows[1].display_name = "From the registry".to_string();
+
+    lead_with_curated(&mut rows, "notion", 20);
+
+    assert_eq!(names(&rows), ["com.notion/mcp", "@acme/notion"]);
+    assert_eq!(rows[0].display_name, "From the registry");
+}
+
+#[test]
+fn a_curated_lead_stays_within_the_page_size() {
+    let mut rows = summaries(&["@acme/slack", "@acme/slack-2"]);
+
+    lead_with_curated(&mut rows, "slack", 2);
+
+    assert_eq!(names(&rows), ["com.slack/mcp", "@acme/slack"]);
+}
+
+#[test]
+fn a_blank_query_leaves_the_page_alone() {
+    let mut rows = summaries(&["@acme/one", "@acme/two"]);
+
+    lead_with_curated(&mut rows, "  ", 20);
+
+    assert_eq!(names(&rows), ["@acme/one", "@acme/two"]);
+}
+
+#[test]
+fn a_query_matching_no_curated_server_leaves_the_page_alone() {
+    let mut rows = summaries(&["@acme/one"]);
+
+    lead_with_curated(&mut rows, "nonesuch", 20);
+
+    assert_eq!(names(&rows), ["@acme/one"]);
 }

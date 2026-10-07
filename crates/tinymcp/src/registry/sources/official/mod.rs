@@ -62,8 +62,10 @@ use super::types::{
 };
 use crate::error::{Error, Result};
 use crate::registry::Store;
-use crate::registry::curation::curated_server;
-use tinymcp_bus::{McpRegistryAuthConfig, RegistryFreshness, RegistryServerDetail};
+use crate::registry::curation::{CURATED_SERVERS, curated_server};
+use tinymcp_bus::{
+    McpRegistryAuthConfig, RegistryFreshness, RegistryServerDetail, RegistryServerSummary,
+};
 
 /// Where the registry lives when nothing overrides it.
 const DEFAULT_BASE: &str = "https://registry.modelcontextprotocol.io";
@@ -166,6 +168,26 @@ impl McpOfficialRegistry {
             return Ok(found);
         }
 
+        let mut found = self
+            .search_registry(store, auth, cursors, query, page, page_size)
+            .await?;
+        if page == 1 {
+            lead_with_curated(&mut found.servers, query, page_size);
+        }
+        Ok(found)
+    }
+
+    /// Searches without the index: the cache, then the registry, then the
+    /// fallback.
+    async fn search_registry(
+        &self,
+        store: &Store,
+        auth: &McpRegistryAuthConfig,
+        cursors: &CursorCache,
+        query: &str,
+        page: u32,
+        page_size: u32,
+    ) -> Result<SourcePage> {
         let cache_key = search_cache_key(query, page, page_size);
 
         if let Ok(Some(cached)) = store.cached(&cache_key)
@@ -457,6 +479,37 @@ fn served(
         total_pages: page_bound(page, has_next),
         freshness: RegistryFreshness::Live,
     }
+}
+
+/// Puts the curated servers matching `query` at the head of a first page,
+/// adding any the page does not carry and keeping the registry's row for any
+/// it does, within `page_size` rows.
+fn lead_with_curated(servers: &mut Vec<RegistryServerSummary>, query: &str, page_size: u32) {
+    let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    if terms.is_empty() {
+        return;
+    }
+
+    let mut leading: Vec<RegistryServerSummary> = CURATED_SERVERS
+        .iter()
+        .filter(|curated| {
+            let text = format!(
+                "{} {} {}",
+                curated.qualified_name, curated.display_name, curated.description
+            )
+            .to_lowercase();
+            terms.iter().all(|term| text.contains(term.as_str()))
+        })
+        .map(|curated| {
+            servers
+                .iter()
+                .position(|row| row.qualified_name == curated.qualified_name)
+                .map_or_else(|| curated.to_summary(), |at| servers.remove(at))
+        })
+        .collect();
+    leading.append(servers);
+    leading.truncate(usize::try_from(page_size.max(1)).unwrap_or(usize::MAX));
+    *servers = leading;
 }
 
 /// The list endpoint.
