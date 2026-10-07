@@ -2078,3 +2078,176 @@ fn a_blank_query_has_no_local_matches() {
 
     assert!(super::fallback::serve_cached(&store, &cursors(), "   ", 1, 20).is_none());
 }
+
+// ---------------------------------------------------------------------------
+// Matching cached server details
+// ---------------------------------------------------------------------------
+
+/// A store holding only the cached details of `names`, as a detail lookup
+/// writes them.
+async fn store_with_details(names: &[&str]) -> Store {
+    let (base, _seen) = paged_registry(1).await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+    for name in names {
+        adapter.get(&store, &auth, name).await.unwrap();
+    }
+    store
+}
+
+/// Caches `server` as the detail of the server it names.
+fn cache_detail(store: &Store, server: &Value) {
+    let name = server["name"].as_str().unwrap();
+    store
+        .cache(
+            &format!("{}{name}", super::DETAIL_CACHE_PREFIX),
+            &server.to_string(),
+        )
+        .unwrap();
+}
+
+fn names_of(page: &SourcePage) -> Vec<&str> {
+    page.servers
+        .iter()
+        .map(|row| row.qualified_name.as_str())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_stalled_search_matches_cached_server_details() {
+    let store = store_with_details(&["com.notion/mcp", "io.github.acme/weather"]).await;
+    let (base, state) = switchable_registry().await;
+    state.set(STALLED);
+    let started = std::time::Instant::now();
+
+    let page = adapter_with_cooldown(Duration::from_secs(60))
+        .search(&store, &auth_at(&base), &cursors(), "notion", 1, 20)
+        .await
+        .expect("the cached detail stands in");
+
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(page.freshness, RegistryFreshness::LocalFallback);
+    assert_eq!(page.total_pages, 1);
+    assert_eq!(names_of(&page), ["com.notion/mcp"]);
+}
+
+#[tokio::test]
+async fn a_cooling_down_search_answers_from_cached_server_details() {
+    let store = store_with_details(&["com.notion/mcp"]).await;
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    state.set(STALLED);
+    adapter
+        .search(&store, &auth, &cursors(), "github", 1, 20)
+        .await
+        .expect_err("stalled");
+    let after_first = state.requests();
+    let started = std::time::Instant::now();
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "Notion", 1, 20)
+        .await
+        .expect("the cached detail stands in");
+
+    assert_eq!(state.requests(), after_first, "nothing was sent");
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(page.freshness, RegistryFreshness::LocalFallback);
+    assert_eq!(names_of(&page), ["com.notion/mcp"]);
+}
+
+#[tokio::test]
+async fn a_search_matching_no_cached_detail_reports_the_typed_error() {
+    let store = store_with_details(&["com.notion/mcp"]).await;
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+    state.set(STALLED);
+
+    let error = adapter
+        .search(&store, &auth, &cursors(), "slack", 1, 20)
+        .await
+        .expect_err("no cached detail matches");
+    assert_eq!(error.wire_name(), tinymcp_bus::errors::REGISTRY_TIMEOUT);
+
+    let error = adapter
+        .search(&store, &auth, &cursors(), "slack", 1, 20)
+        .await
+        .expect_err("still nothing matches while cooling down");
+    assert_eq!(error.wire_name(), tinymcp_bus::errors::REGISTRY_TIMEOUT);
+}
+
+#[test]
+fn a_server_cached_as_a_page_row_and_a_detail_appears_once() {
+    let store = store();
+    store
+        .cache(
+            &search_cache_key("", 1, 20),
+            &json!({ "servers": [envelope("com.notion/mcp")] }).to_string(),
+        )
+        .unwrap();
+    cache_detail(&store, &envelope("com.notion/mcp")["server"]);
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+
+    assert_eq!(names_of(&page), ["com.notion/mcp"]);
+}
+
+#[test]
+fn a_detail_matching_on_its_name_leads_a_page_row_matching_on_its_description() {
+    let store = store();
+    store
+        .cache(
+            &search_cache_key("", 1, 20),
+            &json!({ "servers": [{
+                "server": {
+                    "name": "io.github.acme/pages",
+                    "description": "Sync pages to Notion",
+                    "packages": [{ "registryType": "npm", "identifier": "pages" }],
+                },
+            }] })
+            .to_string(),
+        )
+        .unwrap();
+    cache_detail(&store, &envelope("com.notion/mcp")["server"]);
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+
+    assert_eq!(names_of(&page), ["com.notion/mcp", "io.github.acme/pages"]);
+}
+
+#[test]
+fn a_detail_offering_no_way_to_connect_is_not_matched() {
+    let store = store();
+    cache_detail(&store, &json!({ "name": "com.notion/mcp" }));
+    store
+        .cache(
+            &format!("{}com.notion/broken", super::DETAIL_CACHE_PREFIX),
+            "not json",
+        )
+        .unwrap();
+
+    assert!(super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).is_none());
+}
+
+#[test]
+fn local_matches_from_details_are_capped_at_the_page_size() {
+    let store = store();
+    for name in ["com.notion/a", "com.notion/b", "com.notion/c"] {
+        cache_detail(&store, &envelope(name)["server"]);
+    }
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 2).unwrap();
+
+    assert_eq!(page.servers.len(), 2);
+}

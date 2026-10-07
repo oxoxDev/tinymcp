@@ -109,7 +109,7 @@ struct OfficialServerEnvelope {
 impl OfficialServerEnvelope {
     /// Whether this row offers any way to connect at all.
     fn is_installable(&self) -> bool {
-        !self.server.remotes.is_empty() || !self.server.packages.is_empty()
+        self.server.is_installable()
     }
 
     /// Whether the registry has withdrawn this version.
@@ -181,6 +181,11 @@ pub(super) struct OfficialServer {
 }
 
 impl OfficialServer {
+    /// Whether this server offers any way to connect at all.
+    pub(super) fn is_installable(&self) -> bool {
+        !self.remotes.is_empty() || !self.packages.is_empty()
+    }
+
     /// The icon to show for this server.
     ///
     /// A raster image ahead of an SVG, and an SVG when it is the only one

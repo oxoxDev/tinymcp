@@ -1,8 +1,9 @@
 //! What the official adapter serves when the registry cannot answer.
 //!
 //! In order: an earlier answer to the same request, however old; for the
-//! first page of a search, rows from cached catalog pages that match the
-//! query; otherwise nothing, and the caller returns the error.
+//! first page of a search, rows from cached catalog pages and cached server
+//! details that match the query; otherwise nothing, and the caller returns the
+//! error.
 //!
 //! A listing that timed out also starts a cooldown for listings of its kind,
 //! so the next keystrokes go straight to the cache instead of each waiting out
@@ -13,8 +14,8 @@ use std::time::{Duration, Instant};
 
 use parking_lot::Mutex;
 
-use super::types::OfficialListResponse;
-use super::{BROWSE_CACHE_PREFIX, CursorCache, search_cache_key, served};
+use super::types::{OfficialListResponse, OfficialServer};
+use super::{BROWSE_CACHE_PREFIX, CursorCache, DETAIL_CACHE_PREFIX, search_cache_key, served};
 use crate::error::Error;
 use crate::registry::Store;
 use crate::registry::sources::types::{RegistryOperation, SourcePage};
@@ -91,7 +92,7 @@ pub(super) fn serve_cached(
     tracing::debug!(
         query_length = query.len(),
         matches = servers.len(),
-        "official search served from cached catalog pages"
+        "official search served from cached catalog pages and details"
     );
 
     (!servers.is_empty()).then_some(SourcePage {
@@ -125,9 +126,11 @@ fn stale_page(
     })
 }
 
-/// Rows from every cached catalog page that match `query`, at most `limit`.
+/// Rows from every cached catalog page and server detail that match `query`,
+/// at most `limit`.
 ///
-/// A row matches when every word of the query appears in its name, title, or
+/// Catalog page rows come before detail rows, and a server appears once. A row
+/// matches when every word of the query appears in its name, title, or
 /// description, ignoring case. Rows matching on name or title come first.
 fn local_matches(store: &Store, query: &str, limit: u32) -> Vec<RegistryServerSummary> {
     let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
@@ -135,14 +138,25 @@ fn local_matches(store: &Store, query: &str, limit: u32) -> Vec<RegistryServerSu
         return Vec::new();
     }
 
-    let bodies = store
+    let pages = store
         .cached_with_prefix(BROWSE_CACHE_PREFIX)
         .unwrap_or_default();
-    let mut seen = HashSet::new();
-    let mut matches: Vec<(bool, RegistryServerSummary)> = bodies
+    let details = store
+        .cached_with_prefix(DETAIL_CACHE_PREFIX)
+        .unwrap_or_default();
+    let page_rows = pages
         .iter()
         .filter_map(|body| serde_json::from_str::<OfficialListResponse>(body).ok())
-        .flat_map(OfficialListResponse::into_summaries)
+        .flat_map(OfficialListResponse::into_summaries);
+    let detail_rows = details
+        .iter()
+        .filter_map(|body| serde_json::from_str::<OfficialServer>(body).ok())
+        .filter(OfficialServer::is_installable)
+        .map(OfficialServer::into_summary);
+
+    let mut seen = HashSet::new();
+    let mut matches: Vec<(bool, RegistryServerSummary)> = page_rows
+        .chain(detail_rows)
         .filter(|row| seen.insert(row.qualified_name.clone()))
         .filter_map(|row| {
             let label = format!("{} {}", row.qualified_name, row.display_name).to_lowercase();

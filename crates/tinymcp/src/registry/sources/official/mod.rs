@@ -66,6 +66,9 @@ const MAX_CURSOR_WALK_PAGES: u32 = 50;
 /// The cache key prefix every page of the unfiltered catalog shares.
 const BROWSE_CACHE_PREFIX: &str = "mcp_official:search:latest::";
 
+/// The cache key prefix every server detail shares.
+const DETAIL_CACHE_PREFIX: &str = "mcp_official:detail:";
+
 /// The map from page to the cursor that produced it.
 type CursorCache = Mutex<HashMap<(String, u32, u32), String>>;
 
@@ -226,7 +229,7 @@ impl McpOfficialRegistry {
         auth: &McpRegistryAuthConfig,
         qualified_name: &str,
     ) -> Result<RegistryServerDetail> {
-        let cache_key = format!("mcp_official:detail:{qualified_name}");
+        let cache_key = format!("{DETAIL_CACHE_PREFIX}{qualified_name}");
 
         if let Ok(Some(cached)) = store.cached(&cache_key)
             && let Ok(server) = serde_json::from_str::<OfficialServer>(&cached)
