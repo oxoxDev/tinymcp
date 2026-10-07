@@ -140,10 +140,12 @@ impl OAuthFlow {
     ///
     /// Decided by probing, not by reading registry metadata, which is often
     /// wrong about this. A server that answers without a challenge is open; one
-    /// that challenges with an authorization server [`Self::begin`] can drive
-    /// (authorize, token and dynamic-registration endpoints, and the
-    /// authorization-code grant) wants a browser sign-in; anything else wants a
-    /// static token.
+    /// whose authorization server [`Self::begin`] can drive (authorize, token
+    /// and dynamic-registration endpoints, and the authorization-code grant)
+    /// wants a browser sign-in; anything else wants a static token. The
+    /// authorization server is found from the challenge's `resource_metadata`,
+    /// or, for a Bearer challenge without one, from the well-known metadata on
+    /// the server's origin.
     ///
     /// A discovery failure reports a static token rather than an error. The
     /// user can paste one and find out, which beats being blocked by a probe
@@ -199,8 +201,8 @@ impl OAuthFlow {
     ///
     /// # Errors
     ///
-    /// Returns [`Error::AuthDiscovery`] when no advertised authorization server
-    /// offers everything the flow needs, [`Error::MalformedResponse`] when
+    /// Returns [`Error::AuthDiscovery`] when the server advertises no
+    /// authorization server, or none offers everything the flow needs, [`Error::MalformedResponse`] when
     /// registration answers with something unusable, plus whatever the
     /// transport returns.
     pub async fn begin<S>(&self, store: &S, server_id: &str, redirect_uri: &str) -> Result<String>
@@ -229,9 +231,13 @@ impl OAuthFlow {
             .iter()
             .find(|metadata| can_drive_sign_in(metadata))
             .ok_or_else(|| Error::AuthDiscovery {
-                detail: "no advertised authorization server offers an authorize endpoint, a token \
-                         endpoint, and dynamic client registration together"
-                    .to_string(),
+                detail: if context.authorization_server_metadata.is_empty() {
+                    "the server advertises no authorization server".to_string()
+                } else {
+                    "no authorization server offers an authorize endpoint, a token endpoint, and \
+                     dynamic client registration together"
+                        .to_string()
+                },
                 challenge: Box::new(context.challenge.clone()),
             })?;
 

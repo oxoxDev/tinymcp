@@ -1036,6 +1036,166 @@ async fn a_server_that_does_not_want_authorization_is_refused() {
 }
 
 // ---------------------------------------------------------------------------
+// A server that is its own authorization server
+// ---------------------------------------------------------------------------
+
+/// An MCP server shaped like Zomato's: its 401 names no `resource_metadata`,
+/// and its origin serves its own authorization-server metadata at both the
+/// protected-resource and the RFC 8414 well-known paths.
+async fn origin_authority(with_registration: bool) -> (String, Arc<Authority>) {
+    let state = Arc::new(Authority::default());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let origin = format!("http://{}", listener.local_addr().unwrap());
+
+    let mut metadata = json!({
+        "issuer": format!("{origin}/"),
+        "authorization_endpoint": format!("{origin}/authorize"),
+        "token_endpoint": format!("{origin}/token"),
+        "registration_endpoint": format!("{origin}/register"),
+        "response_types_supported": ["code"],
+        "code_challenge_methods_supported": ["S256"],
+    });
+    if !with_registration {
+        metadata
+            .as_object_mut()
+            .unwrap()
+            .remove("registration_endpoint");
+    }
+    let document = get(move || {
+        let metadata = metadata.clone();
+        async move { axum::Json(metadata) }
+    });
+
+    let app = Router::new()
+        .route("/.well-known/oauth-protected-resource", document.clone())
+        .route("/.well-known/oauth-authorization-server", document)
+        .route(
+            "/mcp",
+            post(|| async {
+                (
+                    AxumStatus::UNAUTHORIZED,
+                    [(
+                        "WWW-Authenticate",
+                        "Bearer error=\"invalid_token\", error_description=\"Authentication required\"",
+                    )],
+                    "",
+                )
+                    .into_response()
+            }),
+        )
+        .merge(endpoints())
+        .with_state(Arc::clone(&state));
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+
+    (format!("{origin}/mcp"), state)
+}
+
+#[tokio::test]
+async fn a_server_that_is_its_own_authorization_server_is_detected_as_oauth() {
+    let (endpoint, _state) = origin_authority(true).await;
+    let store = store_with_remote(&endpoint);
+
+    let detection = flow().detect(&store, "srv-1").await.unwrap();
+
+    assert_eq!(detection.kind, AuthKind::Oauth);
+    let origin = endpoint.trim_end_matches("/mcp");
+    assert_eq!(
+        detection.authorization_endpoint,
+        Some(format!("{origin}/authorize"))
+    );
+}
+
+#[tokio::test]
+async fn a_server_that_is_its_own_authorization_server_signs_in_through_its_origin() {
+    let (endpoint, state) = origin_authority(true).await;
+    let store = store_with_remote(&endpoint);
+
+    let url = flow()
+        .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .await
+        .expect("begin");
+
+    let origin = endpoint.trim_end_matches("/mcp");
+    assert!(url.starts_with(&format!("{origin}/authorize?")), "{url}");
+    assert_eq!(state.registrations.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        authorize_param(&url, "code_challenge_method").as_deref(),
+        Some("S256")
+    );
+    assert!(authorize_param(&url, "code_challenge").is_some());
+    assert!(authorize_param(&url, "state").is_some());
+    assert_eq!(
+        authorize_param(&url, "resource").as_deref(),
+        Some(endpoint.as_str())
+    );
+}
+
+#[tokio::test]
+async fn an_origin_authorization_server_without_dynamic_registration_wants_a_static_token() {
+    let (endpoint, state) = origin_authority(false).await;
+    let store = store_with_remote(&endpoint);
+
+    let detection = flow().detect(&store, "srv-1").await.unwrap();
+    assert_eq!(detection.kind, AuthKind::Token);
+
+    let error = flow()
+        .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .await
+        .expect_err("no registration endpoint");
+    match error {
+        Error::AuthDiscovery { detail, .. } => {
+            assert!(detail.contains("dynamic client registration"), "{detail}");
+        }
+        other => panic!("expected auth discovery, got {other:?}"),
+    }
+    assert_eq!(state.registrations.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
+async fn beginning_against_a_server_advertising_no_authorization_server_says_so() {
+    let app = Router::new().fallback(|| async {
+        (
+            AxumStatus::UNAUTHORIZED,
+            [("WWW-Authenticate", "Bearer realm=\"mcp\"")],
+            "",
+        )
+            .into_response()
+    });
+    let base = serve(app).await;
+    let store = store_with_remote(&format!("{base}/mcp"));
+
+    let error = flow()
+        .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .await
+        .expect_err("no authorization server");
+
+    match error {
+        Error::AuthDiscovery { detail, .. } => {
+            assert!(
+                detail.contains("advertises no authorization server"),
+                "{detail}"
+            );
+        }
+        other => panic!("expected auth discovery, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn public_endpoints_only_refuses_an_origin_authorization_server_on_loopback() {
+    let (endpoint, state) = origin_authority(true).await;
+    let store = store_with_remote(&endpoint);
+
+    let error = flow()
+        .require_public_endpoints()
+        .begin(&store, "srv-1", "http://127.0.0.1:7788/callback")
+        .await
+        .expect_err("a loopback authorization server");
+
+    assert!(error.to_string().contains("endpoint refused"), "{error}");
+    assert_eq!(state.registrations.load(Ordering::SeqCst), 0);
+}
+
+// ---------------------------------------------------------------------------
 // Completing
 // ---------------------------------------------------------------------------
 
