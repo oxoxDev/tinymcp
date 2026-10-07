@@ -6,6 +6,14 @@
 //! catalog it removes barely any of them. So the full deduplicated catalog stays
 //! browsable and the known canonical vendor server is simply *marked*.
 //!
+//! # Curated entries say how to reach the server
+//!
+//! Each entry in [`CURATED_SERVERS`] carries the vendor-hosted endpoint, its
+//! transport and how it authenticates, not just a name. That is what lets a
+//! local search show a curated server the registry does not list, and an
+//! install reach it when the registry cannot be asked. [`OFFICIAL_SERVERS`] is
+//! the same list as bare names.
+//!
 //! # Matching is exact, never a substring
 //!
 //! A term like `stripe` or `github` appears in the name of plenty of unrelated
@@ -21,10 +29,12 @@
 //! emitting those keys could otherwise filter itself into a catalog that
 //! promises the user a server is safely installable.
 
+mod servers;
 mod types;
 
 pub use types::{
-    OFFICIAL_SERVERS, float_official_first, is_perfect_server, retain_perfect_servers, tag_official,
+    CURATED_SERVERS, CuratedAuth, CuratedServer, CuratedTransport, OFFICIAL_SERVERS,
+    curated_server, float_official_first, is_perfect_server, retain_perfect_servers, tag_official,
 };
 
 #[cfg(test)]
