@@ -11,7 +11,8 @@
 ///
 /// 1.1 added agent tools; 1.2 added registry and directory members; 1.3 added
 /// the structured call outcome and the credential-store error name; 1.4 added
-/// the search page's freshness and the registry-timeout error name.
+/// the search page's freshness, including answers from the local catalog index,
+/// and the registry-timeout error name.
 pub const CONTRACT_VERSION: (u32, u32) = (1, 4);
 
 /// Returns whether a host holding [`CONTRACT_VERSION`] can bind to a module

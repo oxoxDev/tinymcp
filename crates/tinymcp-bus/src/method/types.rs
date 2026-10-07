@@ -44,6 +44,12 @@ pub enum RegistryFreshness {
     /// Answered by the upstream catalogs, now or within the cache lifetime.
     #[default]
     Live,
+    /// Answered from the module's local copy of the official catalog, which it
+    /// re-syncs in the background.
+    ///
+    /// Complete as of the last sync, so it can trail the upstream by up to the
+    /// refresh interval.
+    Indexed,
     /// The upstream could not answer; this is an earlier answer to the same
     /// request, however old.
     Cached,

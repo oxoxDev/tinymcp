@@ -109,6 +109,7 @@ fn a_curation_request_serializes_both_switches() {
 fn freshness_travels_in_snake_case() {
     for (freshness, wire) in [
         (RegistryFreshness::Live, "live"),
+        (RegistryFreshness::Indexed, "indexed"),
         (RegistryFreshness::Cached, "cached"),
         (RegistryFreshness::LocalFallback, "local_fallback"),
     ] {
@@ -122,8 +123,13 @@ fn freshness_travels_in_snake_case() {
 
 #[test]
 fn freshness_orders_from_freshest_to_least_fresh() {
-    assert!(RegistryFreshness::Live < RegistryFreshness::Cached);
+    assert!(RegistryFreshness::Live < RegistryFreshness::Indexed);
+    assert!(RegistryFreshness::Indexed < RegistryFreshness::Cached);
     assert!(RegistryFreshness::Cached < RegistryFreshness::LocalFallback);
+    assert_eq!(
+        RegistryFreshness::Live.max(RegistryFreshness::Indexed),
+        RegistryFreshness::Indexed
+    );
     assert_eq!(
         RegistryFreshness::Live.max(RegistryFreshness::LocalFallback),
         RegistryFreshness::LocalFallback
