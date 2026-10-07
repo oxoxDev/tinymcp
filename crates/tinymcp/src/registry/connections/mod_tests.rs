@@ -10,7 +10,8 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use axum::routing::post;
+use axum::response::IntoResponse;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{Value, json};
 
@@ -403,6 +404,71 @@ fn a_transport_failure_is_not_classified_as_an_authentication_one() {
     let failure = ConnectFailure::new(&error, true);
     assert_eq!(failure.auth, None);
     assert!(failure.message.contains("500"));
+}
+
+/// A server whose 401 names no `resource_metadata`, optionally publishing its
+/// own authorization-server metadata on its origin.
+fn bearer_gated_server(publishes_metadata: bool) -> Router {
+    let mut app = Router::new().route(
+        "/",
+        post(|| async {
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                [("WWW-Authenticate", "Bearer error=\"invalid_token\"")],
+                "",
+            )
+                .into_response()
+        }),
+    );
+    if publishes_metadata {
+        app = app.route(
+            "/.well-known/oauth-authorization-server",
+            get(|headers: axum::http::HeaderMap| async move {
+                let host = headers
+                    .get("host")
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_string();
+                Json(json!({
+                    "issuer": format!("http://{host}/"),
+                    "authorization_endpoint": format!("http://{host}/authorize"),
+                    "token_endpoint": format!("http://{host}/token"),
+                    "registration_endpoint": format!("http://{host}/register"),
+                }))
+            }),
+        );
+    }
+    app
+}
+
+async fn auth_hint_after_connecting(app: Router) -> Option<McpAuthHint> {
+    let url = serve(app).await;
+    let server = install("srv-1", Transport::HttpRemote { url });
+    let store = store_with(&server);
+    let connections = Connections::new();
+    let oauth = OAuthFlow::new(None).unwrap();
+
+    connections
+        .connect(&store, &oauth, &identity(), None, &server)
+        .await
+        .expect_err("a 401");
+    connections.auth_hint("srv-1").await
+}
+
+#[tokio::test]
+async fn a_401_whose_origin_publishes_authorization_metadata_needs_a_sign_in() {
+    assert_eq!(
+        auth_hint_after_connecting(bearer_gated_server(true)).await,
+        Some(McpAuthHint::OauthRequired)
+    );
+}
+
+#[tokio::test]
+async fn a_401_with_no_authorization_metadata_anywhere_needs_a_credential() {
+    assert_eq!(
+        auth_hint_after_connecting(bearer_gated_server(false)).await,
+        Some(McpAuthHint::CredentialRequired)
+    );
 }
 
 // ---------------------------------------------------------------------------

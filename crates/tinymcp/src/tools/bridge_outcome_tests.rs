@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::IntoResponse as _;
-use axum::routing::post;
+use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{Value, json};
 use tinymcp_bus::{
@@ -72,21 +72,50 @@ async fn answering_server() -> String {
 }
 
 async fn unauthorized_server(resource_metadata: Option<&'static str>) -> String {
-    let app = Router::new().route(
-        "/mcp",
-        post(move || async move {
-            let mut headers = HeaderMap::new();
-            let challenge = resource_metadata.map_or_else(
-                || "Bearer realm=\"mcp\"".to_string(),
-                |url| format!("Bearer resource_metadata=\"{url}\""),
-            );
-            headers.insert(
-                "www-authenticate",
-                HeaderValue::from_str(&challenge).unwrap(),
-            );
-            (StatusCode::UNAUTHORIZED, headers, "").into_response()
-        }),
-    );
+    let app = Router::new().fallback(move || async move {
+        let mut headers = HeaderMap::new();
+        let challenge = resource_metadata.map_or_else(
+            || "Bearer realm=\"mcp\"".to_string(),
+            |url| format!("Bearer resource_metadata=\"{url}\""),
+        );
+        headers.insert(
+            "www-authenticate",
+            HeaderValue::from_str(&challenge).unwrap(),
+        );
+        (StatusCode::UNAUTHORIZED, headers, "").into_response()
+    });
+    serve(app).await
+}
+
+async fn self_authorizing_server() -> String {
+    let app = Router::new()
+        .route(
+            "/.well-known/oauth-authorization-server",
+            get(|headers: HeaderMap| async move {
+                let host = headers
+                    .get("host")
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_string();
+                Json(json!({
+                    "issuer": format!("http://{host}/"),
+                    "authorization_endpoint": format!("http://{host}/authorize"),
+                    "token_endpoint": format!("http://{host}/token"),
+                    "registration_endpoint": format!("http://{host}/register"),
+                }))
+            }),
+        )
+        .route(
+            "/mcp",
+            post(|| async {
+                (
+                    StatusCode::UNAUTHORIZED,
+                    [("www-authenticate", "Bearer error=\"invalid_token\"")],
+                    "",
+                )
+                    .into_response()
+            }),
+        );
     serve(app).await
 }
 
@@ -168,7 +197,7 @@ async fn a_401_advertising_oauth_reports_both_flags() {
 }
 
 #[tokio::test]
-async fn a_401_without_resource_metadata_is_unauthorized_without_oauth() {
+async fn a_401_with_no_oauth_metadata_anywhere_is_unauthorized_without_oauth() {
     let endpoint = unauthorized_server(None).await;
     let result = call_tool(registry(&endpoint, McpAuthConfig::None, &[]))
         .execute(args("whoami"))
@@ -178,6 +207,19 @@ async fn a_401_without_resource_metadata_is_unauthorized_without_oauth() {
     assert_eq!(error.code, errors::UNAUTHORIZED);
     assert!(error.unauthorized);
     assert!(!error.advertises_oauth);
+}
+
+#[tokio::test]
+async fn a_401_whose_origin_publishes_authorization_server_metadata_advertises_oauth() {
+    let endpoint = self_authorizing_server().await;
+    let result = call_tool(registry(&endpoint, McpAuthConfig::None, &[]))
+        .execute(args("whoami"))
+        .await
+        .unwrap();
+    let error = outcome_of(&result).error.unwrap();
+    assert_eq!(error.code, errors::UNAUTHORIZED);
+    assert!(error.unauthorized);
+    assert!(error.advertises_oauth);
 }
 
 #[tokio::test]
