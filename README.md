@@ -228,6 +228,26 @@ when a key is configured.
   timed out skips the network for the next 60 s, still answering from the cache
   or local matches when either exists. `RegistrySearchPage::freshness` (contract 1.4) tells a host
   which kind of answer it got.
+- **A local index answers searches.** The registry's `search=` can take tens of
+  seconds while its plain listing pages quickly, so the first search or browse
+  starts a background sync that pages `/v0/servers?version=latest` by cursor
+  into the store, one row per server. Once a sync has finished, a query is
+  answered from that copy without asking the registry
+  (`RegistryFreshness::Indexed`): every word must appear in the name, title or
+  description, and matches rank curated servers first, then name or title
+  matches, then description matches, each alphabetical. Until then a search
+  takes the path above. A failed page keeps what was synced and the next sync
+  resumes from it; at most one sync runs at a time; the index re-syncs after
+  six hours (`registry::RegistryIndexSettings`, set with
+  `McpOfficialRegistry::with_settings` and `Registries::with_official`).
+  Browsing a page of the catalog is unchanged.
+- **Curated servers** (`curation::CURATED_SERVERS`) carry their hosted
+  endpoint, transport and authentication, not just a name; `OFFICIAL_SERVERS`
+  is the same list as names. A curated server matches a local search even when
+  the index lacks it, and its detail comes from the entry when the registry
+  cannot describe it. Slack's server (`com.slack/mcp`) is not in the registry
+  and accepts only OAuth clients Slack has registered in advance, so it is
+  marked `CuratedAuth::OauthPreregistered`.
 
 ## `mcp.json` and OAuth for hosts with their own store
 
