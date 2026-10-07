@@ -1507,7 +1507,7 @@ async fn a_stalled_search_fails_within_its_budget_as_a_registry_timeout() {
     let started = std::time::Instant::now();
 
     let error = impatient_adapter()
-        .search(&store(), &auth_at(&base), &cursors(), "github", 1, 20)
+        .search(&store(), &auth_at(&base), &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("the search stalls");
 
@@ -1856,7 +1856,7 @@ async fn a_search_with_an_empty_cache_reports_the_typed_error() {
     state.set(FAILING);
 
     let error = adapter()
-        .search(&store(), &auth_at(&base), &cursors(), "github", 1, 20)
+        .search(&store(), &auth_at(&base), &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("nothing cached");
 
@@ -1897,14 +1897,14 @@ async fn a_stalled_search_skips_the_network_for_the_cooldown() {
 
     state.set(STALLED);
     adapter
-        .search(&store, &auth, &cursors(), "github", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("stalled");
     let after_first = state.requests();
     let started = std::time::Instant::now();
 
     let error = adapter
-        .search(&store, &auth, &cursors(), "notion", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("still cooling down");
 
@@ -1938,7 +1938,7 @@ async fn a_cooling_down_search_still_answers_from_the_cache() {
         .unwrap();
     state.set(STALLED);
     adapter
-        .search(&store, &auth, &cursors(), "github", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("stalled");
     let after_first = state.requests();
@@ -1961,7 +1961,7 @@ async fn a_search_cooldown_does_not_hold_back_browsing() {
 
     state.set(STALLED);
     adapter
-        .search(&store, &auth, &cursors(), "github", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("stalled");
     state.set(UP);
@@ -1983,7 +1983,7 @@ async fn the_network_is_tried_again_once_the_cooldown_ends() {
 
     state.set(STALLED);
     adapter
-        .search(&store, &auth, &cursors(), "github", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("stalled");
     state.set(UP);
@@ -2006,12 +2006,26 @@ async fn a_cooldown_is_scoped_to_the_registry_that_stalled() {
 
     stalled.set(STALLED);
     adapter
-        .search(&store, &auth_at(&stalled_base), &cursors(), "github", 1, 20)
+        .search(
+            &store,
+            &auth_at(&stalled_base),
+            &cursors(),
+            "nonesuch",
+            1,
+            20,
+        )
         .await
         .expect_err("stalled");
 
     let page = adapter
-        .search(&store, &auth_at(&healthy_base), &cursors(), "github", 1, 20)
+        .search(
+            &store,
+            &auth_at(&healthy_base),
+            &cursors(),
+            "nonesuch",
+            1,
+            20,
+        )
         .await
         .expect("another registry is not cooling down");
 
@@ -2027,13 +2041,13 @@ async fn a_failure_status_starts_no_cooldown() {
 
     state.set(FAILING);
     adapter
-        .search(&store, &auth, &cursors(), "github", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("503");
     state.set(UP);
 
     let page = adapter
-        .search(&store, &auth, &cursors(), "github", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect("an answered failure is retried at once");
 
@@ -2145,7 +2159,7 @@ async fn a_cooling_down_search_answers_from_cached_server_details() {
 
     state.set(STALLED);
     adapter
-        .search(&store, &auth, &cursors(), "github", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("stalled");
     let after_first = state.requests();
@@ -2175,13 +2189,13 @@ async fn a_search_matching_no_cached_detail_reports_the_typed_error() {
     state.set(STALLED);
 
     let error = adapter
-        .search(&store, &auth, &cursors(), "slack", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("no cached detail matches");
     assert_eq!(error.wire_name(), tinymcp_bus::errors::REGISTRY_TIMEOUT);
 
     let error = adapter
-        .search(&store, &auth, &cursors(), "slack", 1, 20)
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
         .await
         .expect_err("still nothing matches while cooling down");
     assert_eq!(error.wire_name(), tinymcp_bus::errors::REGISTRY_TIMEOUT);
@@ -2229,15 +2243,54 @@ fn a_detail_matching_on_its_name_leads_a_page_row_matching_on_its_description() 
 #[test]
 fn a_detail_offering_no_way_to_connect_is_not_matched() {
     let store = store();
-    cache_detail(&store, &json!({ "name": "com.notion/mcp" }));
+    cache_detail(&store, &json!({ "name": "io.example/zzq" }));
     store
         .cache(
-            &format!("{}com.notion/broken", super::DETAIL_CACHE_PREFIX),
+            &format!("{}io.example/zzq-broken", super::DETAIL_CACHE_PREFIX),
             "not json",
         )
         .unwrap();
 
-    assert!(super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).is_none());
+    assert!(super::fallback::serve_cached(&store, &cursors(), "zzq", 1, 20).is_none());
+}
+
+#[tokio::test]
+async fn a_stalled_search_with_nothing_cached_still_finds_a_curated_server() {
+    let (base, state) = switchable_registry().await;
+    state.set(STALLED);
+
+    let page = adapter_with_cooldown(Duration::from_secs(60))
+        .search(&store(), &auth_at(&base), &cursors(), "slack", 1, 20)
+        .await
+        .expect("the curated entry stands in");
+
+    assert_eq!(page.freshness, RegistryFreshness::LocalFallback);
+    assert_eq!(names_of(&page), ["com.slack/mcp"]);
+}
+
+#[test]
+fn a_curated_server_leads_cached_rows_in_a_local_match() {
+    let store = store();
+    store
+        .cache(
+            &search_cache_key("", 1, 20),
+            &json!({ "servers": [{
+                "server": {
+                    "name": "io.github.acme/notion-sync",
+                    "description": "Sync pages",
+                    "packages": [{ "registryType": "npm", "identifier": "notion-sync" }],
+                },
+            }] })
+            .to_string(),
+        )
+        .unwrap();
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+
+    assert_eq!(
+        names_of(&page),
+        ["com.notion/mcp", "io.github.acme/notion-sync"]
+    );
 }
 
 #[test]

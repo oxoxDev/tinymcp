@@ -18,6 +18,7 @@ use super::types::{OfficialListResponse, OfficialServer};
 use super::{BROWSE_CACHE_PREFIX, CursorCache, DETAIL_CACHE_PREFIX, search_cache_key, served};
 use crate::error::Error;
 use crate::registry::Store;
+use crate::registry::curation::{CURATED_SERVERS, CuratedServer, curated_server};
 use crate::registry::sources::types::{RegistryOperation, SourcePage};
 use tinymcp_bus::{RegistryFreshness, RegistryServerSummary};
 
@@ -154,9 +155,12 @@ fn local_matches(store: &Store, query: &str, limit: u32) -> Vec<RegistryServerSu
         .filter(OfficialServer::is_installable)
         .map(OfficialServer::into_summary);
 
+    let curated_rows = CURATED_SERVERS.iter().map(CuratedServer::to_summary);
+
     let mut seen = HashSet::new();
     let mut matches: Vec<(bool, RegistryServerSummary)> = page_rows
         .chain(detail_rows)
+        .chain(curated_rows)
         .filter(|row| seen.insert(row.qualified_name.clone()))
         .filter_map(|row| {
             let label = format!("{} {}", row.qualified_name, row.display_name).to_lowercase();
@@ -173,7 +177,8 @@ fn local_matches(store: &Store, query: &str, limit: u32) -> Vec<RegistryServerSu
         })
         .collect();
 
-    matches.sort_by_key(|(in_label, _)| !in_label);
+    matches
+        .sort_by_key(|(in_label, row)| (curated_server(&row.qualified_name).is_none(), !in_label));
     matches
         .into_iter()
         .map(|(_, row)| row)
