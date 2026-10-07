@@ -121,8 +121,8 @@ pub use tinymcp_bus::{
     McpClientIdentityConfig, McpClientInfo, McpInitializeResult, McpProxyConfig,
     McpRegistryAuthConfig, McpRemoteTool, McpServerConfig, McpServerToolResult, McpSseEvent,
     McpTool, McpToolContent, McpToolResult, McpWriteListQuery, McpWriteRecord, NewMcpWriteRecord,
-    OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection, RegistryListResponse,
-    RegistryPagination, RegistryServerDetail, RegistryServerSummary, SUPPORTED_PROTOCOL_VERSIONS,
-    SearchCuration, ServerDetail, ServerStatus, Transport, config, is_compatible, names, sanitize,
-    version,
+    OBJECT_PATH, ProtectedResourceMetadata, RegistryConnection, RegistryFreshness,
+    RegistryListResponse, RegistryPagination, RegistryServerDetail, RegistryServerSummary,
+    SUPPORTED_PROTOCOL_VERSIONS, SearchCuration, ServerDetail, ServerStatus, Transport, config,
+    is_compatible, names, sanitize, version,
 };

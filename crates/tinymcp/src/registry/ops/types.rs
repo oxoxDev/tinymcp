@@ -14,8 +14,8 @@ use crate::registry::{
 use tinymcp_bus::{
     AuthDetection, ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome,
     InstalledServer, McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool,
-    RegistrySearchPage, RegistryServerDetail, RegistrySettings, SearchCuration, ToolCallOutcome,
-    Transport, UpdateEnvOutcome, UpdateEnvStatus, normalize_tool_arguments,
+    RegistryFreshness, RegistrySearchPage, RegistryServerDetail, RegistrySettings, SearchCuration,
+    ToolCallOutcome, Transport, UpdateEnvOutcome, UpdateEnvStatus, normalize_tool_arguments,
 };
 
 /// The separator a source-routed name uses.
@@ -152,6 +152,7 @@ impl McpRegistry {
             servers,
             page: page.max(1),
             total_pages,
+            freshness: RegistryFreshness::Live,
         })
     }
 

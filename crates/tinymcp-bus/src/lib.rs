@@ -143,8 +143,8 @@ pub use config::{
     McpRegistryAuthConfig, McpServerConfig,
 };
 pub use method::{
-    ConnectOutcome, InstallOutcome, RegistrySearchPage, RegistrySettings, SearchCuration,
-    ServerDetail, ToolCallOutcome, UpdateEnvOutcome, UpdateEnvStatus,
+    ConnectOutcome, InstallOutcome, RegistryFreshness, RegistrySearchPage, RegistrySettings,
+    SearchCuration, ServerDetail, ToolCallOutcome, UpdateEnvOutcome, UpdateEnvStatus,
 };
 pub use names::{DIRECTORY_OBJECT_PREFIX, INTERFACE, METHODS, OBJECT_PATH};
 pub use registry::{

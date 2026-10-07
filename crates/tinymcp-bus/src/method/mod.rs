@@ -16,8 +16,8 @@
 mod types;
 
 pub use types::{
-    ConnectOutcome, InstallOutcome, RegistrySearchPage, RegistrySettings, SearchCuration,
-    ServerDetail, ToolCallOutcome, UpdateEnvOutcome, UpdateEnvStatus,
+    ConnectOutcome, InstallOutcome, RegistryFreshness, RegistrySearchPage, RegistrySettings,
+    SearchCuration, ServerDetail, ToolCallOutcome, UpdateEnvOutcome, UpdateEnvStatus,
 };
 
 #[cfg(test)]
