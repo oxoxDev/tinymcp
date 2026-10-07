@@ -248,8 +248,9 @@ when a key is configured.
 - **Curated servers** (`curation::CURATED_SERVERS`) carry their hosted
   endpoint, transport and authentication, not just a name; `OFFICIAL_SERVERS`
   is the same list as names. A curated server matches a local search even when
-  the index lacks it, and its detail comes from the entry when the registry
-  cannot describe it. Slack's server (`com.slack/mcp`) is not in the registry
+  the index lacks it, leads the first page of any search whose words it
+  matches (added when the registry's answer leaves it out), and its detail
+  comes from the entry when the registry cannot describe it. Slack's server (`com.slack/mcp`) is not in the registry
   and accepts only OAuth clients Slack has registered in advance, so it is
   marked `CuratedAuth::OauthPreregistered`.
 
