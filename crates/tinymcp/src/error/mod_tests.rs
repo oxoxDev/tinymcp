@@ -121,7 +121,7 @@ fn no_other_variant_is_reported_as_unauthorized() {
 }
 
 #[test]
-fn only_a_401_advertising_resource_metadata_is_flagged_as_oauth() {
+fn only_a_401_with_discovered_oauth_metadata_is_flagged_as_oauth() {
     // This is what decides between offering a sign-in and offering a token
     // field. A server that only accepts OAuth refuses a pasted token however
     // valid it looks.
