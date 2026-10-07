@@ -1452,3 +1452,101 @@ async fn a_list_body_that_does_not_decode_is_reported_as_malformed() {
         "{error:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Time budgets
+// ---------------------------------------------------------------------------
+
+use std::time::Duration;
+
+use super::super::types::{RegistryOperation, RegistryTimeouts};
+
+/// A registry that holds every request for `delay` before answering.
+async fn slow_registry(delay: Duration) -> (String, Arc<Seen>) {
+    let seen = Arc::new(Seen::default());
+
+    let app = Router::new()
+        .fallback(get(move |State(seen): State<Arc<Seen>>| async move {
+            seen.pages.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(delay).await;
+            axum::Json(json!({ "servers": [envelope("@acme/slow")] }))
+        }))
+        .with_state(Arc::clone(&seen));
+
+    (serve(app).await, seen)
+}
+
+/// Budgets short enough for a test, with `search` shorter than the rest.
+fn short_budgets() -> RegistryTimeouts {
+    RegistryTimeouts {
+        connect: Duration::from_secs(5),
+        browse: Duration::from_secs(5),
+        search: Duration::from_millis(100),
+        detail: Duration::from_millis(100),
+    }
+}
+
+/// An adapter with [`short_budgets`].
+fn impatient_adapter() -> McpOfficialRegistry {
+    McpOfficialRegistry::with_timeouts(short_budgets()).expect("the adapter builds")
+}
+
+#[tokio::test]
+async fn a_stalled_search_fails_within_its_budget_as_a_registry_timeout() {
+    let (base, _seen) = slow_registry(Duration::from_secs(5)).await;
+    let started = std::time::Instant::now();
+
+    let error = impatient_adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "github", 1, 20)
+        .await
+        .expect_err("the search stalls");
+
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "{:?}",
+        started.elapsed()
+    );
+    match error {
+        Error::RegistryTimeout {
+            operation, timeout, ..
+        } => {
+            assert_eq!(operation, RegistryOperation::Search);
+            assert_eq!(timeout, Duration::from_millis(100));
+        }
+        other => panic!("expected a registry timeout, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_browse_has_its_own_longer_budget() {
+    let (base, _seen) = slow_registry(Duration::from_millis(300)).await;
+
+    let (servers, _) = impatient_adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .expect("the browse budget covers the delay");
+
+    assert_eq!(servers.len(), 1);
+}
+
+#[tokio::test]
+async fn a_stalled_detail_lookup_is_a_detail_timeout() {
+    let (base, _seen) = slow_registry(Duration::from_secs(5)).await;
+
+    let error = impatient_adapter()
+        .get(&store(), &auth_at(&base), "@acme/slow")
+        .await
+        .expect_err("the lookup stalls");
+
+    assert!(
+        matches!(
+            error,
+            Error::RegistryTimeout {
+                operation: RegistryOperation::Detail,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+    assert!(error.is_registry_unavailable());
+}

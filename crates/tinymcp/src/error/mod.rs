@@ -32,7 +32,11 @@
 //! and user interfaces, and a URL with credentials in its userinfo would reach
 //! all three.
 
+use std::time::Duration;
+
 use tinymcp_bus::{CommandKind, McpAuthChallenge};
+
+use crate::registry::RegistryOperation;
 
 /// Errors returned by this crate.
 #[derive(Debug, thiserror::Error)]
@@ -117,6 +121,21 @@ pub enum Error {
         /// What the HTTP client reported.
         #[source]
         source: Box<reqwest::Error>,
+    },
+
+    /// An upstream registry did not answer within its time budget.
+    ///
+    /// Transient. A caller shows the catalog as unavailable for now rather
+    /// than reporting a failure; [`Self::is_registry_unavailable`] groups it
+    /// with the other upstream outages.
+    #[error("mcp registry {operation} timed out after {}ms at `{endpoint}`", timeout.as_millis())]
+    RegistryTimeout {
+        /// The redacted endpoint that did not answer.
+        endpoint: String,
+        /// What was being asked of it.
+        operation: RegistryOperation,
+        /// The budget it had.
+        timeout: Duration,
     },
 
     /// A server negotiated a protocol version this client does not speak.
@@ -394,6 +413,7 @@ impl Error {
             Self::MissingRuntime { .. } => errors::MISSING_RUNTIME,
             Self::Http { .. } => errors::HTTP,
             Self::Transport { .. } => errors::TRANSPORT,
+            Self::RegistryTimeout { .. } => errors::REGISTRY_TIMEOUT,
             Self::UnsupportedProtocolVersion { .. } => errors::UNSUPPORTED_PROTOCOL_VERSION,
             Self::MalformedResponse { .. } => errors::MALFORMED_RESPONSE,
             Self::Rpc { .. } => errors::RPC,
@@ -470,6 +490,67 @@ impl Error {
     #[must_use]
     pub const fn is_missing_runtime(&self) -> bool {
         matches!(self, Self::MissingRuntime { .. })
+    }
+
+    /// Whether this error is a request that ran out of time.
+    ///
+    /// A registry timeout, or a transport failure the HTTP client reports as
+    /// a timeout.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use std::time::Duration;
+    /// # use tinymcp::Error;
+    /// # use tinymcp::registry::RegistryOperation;
+    /// let error = Error::RegistryTimeout {
+    ///     endpoint: "https://registry.test".into(),
+    ///     operation: RegistryOperation::Search,
+    ///     timeout: Duration::from_secs(8),
+    /// };
+    /// assert!(error.is_timeout());
+    /// ```
+    #[must_use]
+    pub fn is_timeout(&self) -> bool {
+        match self {
+            Self::RegistryTimeout { .. } => true,
+            Self::Transport { source, .. } => source.is_timeout(),
+            _ => false,
+        }
+    }
+
+    /// Whether this error means "the upstream could not answer right now".
+    ///
+    /// A timeout, a transport failure, or a status that names the upstream
+    /// rather than the request: 408, 429, or any 5xx. A caller serves what it
+    /// already has, or offers a retry, instead of reporting the request as
+    /// wrong.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// # use tinymcp::Error;
+    /// let outage = Error::Http {
+    ///     endpoint: "https://registry.test".into(),
+    ///     status: 503,
+    ///     body: String::new(),
+    /// };
+    /// assert!(outage.is_registry_unavailable());
+    ///
+    /// let refused = Error::Http {
+    ///     endpoint: "https://registry.test".into(),
+    ///     status: 400,
+    ///     body: String::new(),
+    /// };
+    /// assert!(!refused.is_registry_unavailable());
+    /// ```
+    #[must_use]
+    pub const fn is_registry_unavailable(&self) -> bool {
+        match self {
+            Self::RegistryTimeout { .. } | Self::Transport { .. } => true,
+            Self::Http { status, .. } => matches!(*status, 408 | 429 | 500..=599),
+            _ => false,
+        }
     }
 
     /// Whether the 401 advertised OAuth.

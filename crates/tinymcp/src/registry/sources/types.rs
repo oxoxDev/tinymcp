@@ -1,6 +1,8 @@
 //! The dispatcher over the upstream catalogs.
 
 use std::collections::HashMap;
+use std::fmt;
+use std::time::Duration;
 
 use parking_lot::Mutex;
 
@@ -20,6 +22,86 @@ pub const SOURCE_MCP_OFFICIAL: &str = "mcp_official";
 
 /// The default page size when a caller does not ask for one.
 const DEFAULT_PAGE_SIZE: u32 = 20;
+
+/// What a request to an upstream catalog was asking for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum RegistryOperation {
+    /// A page of the unfiltered catalog.
+    Browse,
+    /// A page of results for a query.
+    Search,
+    /// One server's detail.
+    Detail,
+}
+
+impl RegistryOperation {
+    /// The operation's lowercase name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Browse => "browse",
+            Self::Search => "search",
+            Self::Detail => "detail",
+        }
+    }
+
+    /// The operation a listing is: a search when there is a query, a browse
+    /// otherwise.
+    #[must_use]
+    pub const fn for_query(query: &str) -> Self {
+        if query.is_empty() {
+            Self::Browse
+        } else {
+            Self::Search
+        }
+    }
+}
+
+impl fmt::Display for RegistryOperation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// How long the official catalog adapter waits on each kind of request.
+///
+/// Search has the shortest budget: it is what a user is typing into, and the
+/// registry's search can stall while its plain listing answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegistryTimeouts {
+    /// Establishing a connection.
+    pub connect: Duration,
+    /// A page of the unfiltered catalog.
+    pub browse: Duration,
+    /// A page of results for a query.
+    pub search: Duration,
+    /// One server's detail.
+    pub detail: Duration,
+}
+
+impl RegistryTimeouts {
+    /// The budget for `operation`.
+    #[must_use]
+    pub const fn budget(&self, operation: RegistryOperation) -> Duration {
+        match operation {
+            RegistryOperation::Browse => self.browse,
+            RegistryOperation::Search => self.search,
+            RegistryOperation::Detail => self.detail,
+        }
+    }
+}
+
+impl Default for RegistryTimeouts {
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(5),
+            browse: Duration::from_secs(15),
+            search: Duration::from_secs(8),
+            detail: Duration::from_secs(12),
+        }
+    }
+}
 
 /// One upstream catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

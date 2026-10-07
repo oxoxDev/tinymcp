@@ -1,5 +1,9 @@
 //! Helpers both catalog adapters need.
 
+use std::time::Duration;
+
+use super::types::RegistryOperation;
+use crate::error::{Error, Result};
 use crate::registry::Store;
 
 /// How much of an upstream failure body to keep.
@@ -31,4 +35,56 @@ pub(super) fn cache(store: &Store, cache_key: &str, body: &str) {
     if let Err(error) = store.cache(cache_key, body) {
         tracing::debug!(cache_key, "could not cache an upstream response: {error}");
     }
+}
+
+/// Sends a request and returns its body, judging the status first.
+pub(super) async fn read_body(
+    request: reqwest::RequestBuilder,
+    url: &str,
+    operation: RegistryOperation,
+    timeout: Duration,
+) -> Result<String> {
+    let response = request
+        .send()
+        .await
+        .map_err(|error| upstream_error(url, error, operation, timeout))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| upstream_error(url, error, operation, timeout))?;
+
+    if !status.is_success() {
+        return Err(Error::Http {
+            endpoint: crate::redact_endpoint(url),
+            status: status.as_u16(),
+            body: truncate(&body, MAX_ERROR_BODY_BYTES),
+        });
+    }
+
+    Ok(body)
+}
+
+/// The error for a request to `url` that failed before a status was judged.
+///
+/// A timeout becomes [`Error::RegistryTimeout`], so a caller can tell a
+/// stalled catalog from an unreachable one; anything else is a transport
+/// failure.
+pub(super) fn upstream_error(
+    url: &str,
+    error: reqwest::Error,
+    operation: RegistryOperation,
+    timeout: Duration,
+) -> Error {
+    if error.is_timeout() {
+        tracing::debug!(%operation, timeout_ms = timeout.as_millis(), "registry request timed out");
+        return Error::RegistryTimeout {
+            endpoint: crate::redact_endpoint(url),
+            operation,
+            timeout,
+        };
+    }
+
+    Error::transport(url, error)
 }

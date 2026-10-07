@@ -7,7 +7,10 @@ use serde_json::json;
 use super::encode::encode_path_segment;
 use super::shared::{MAX_ERROR_BODY_BYTES, truncate};
 use super::smithery::tag_source;
-use super::types::{Registries, RegistrySource, SOURCE_MCP_OFFICIAL, SOURCE_SMITHERY};
+use super::types::{
+    Registries, RegistryOperation, RegistrySource, RegistryTimeouts, SOURCE_MCP_OFFICIAL,
+    SOURCE_SMITHERY,
+};
 use tinymcp_bus::{McpRegistryAuthConfig, RegistryServerSummary};
 
 /// A dispatcher with the given registry credentials.
@@ -21,6 +24,52 @@ fn with_smithery_key() -> McpRegistryAuthConfig {
         smithery_api_key: Some("key-1".into()),
         ..McpRegistryAuthConfig::default()
     }
+}
+
+// ---------------------------------------------------------------------------
+// Operations and their budgets
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_listing_with_a_query_is_a_search_and_without_one_a_browse() {
+    assert_eq!(RegistryOperation::for_query(""), RegistryOperation::Browse);
+    assert_eq!(
+        RegistryOperation::for_query("github"),
+        RegistryOperation::Search
+    );
+}
+
+#[test]
+fn every_operation_renders_its_lowercase_name() {
+    for (operation, name) in [
+        (RegistryOperation::Browse, "browse"),
+        (RegistryOperation::Search, "search"),
+        (RegistryOperation::Detail, "detail"),
+    ] {
+        assert_eq!(operation.as_str(), name);
+        assert_eq!(operation.to_string(), name);
+    }
+}
+
+#[test]
+fn the_default_budgets_are_pinned() {
+    use std::time::Duration;
+
+    let timeouts = RegistryTimeouts::default();
+
+    assert_eq!(timeouts.connect, Duration::from_secs(5));
+    assert_eq!(
+        timeouts.budget(RegistryOperation::Browse),
+        Duration::from_secs(15)
+    );
+    assert_eq!(
+        timeouts.budget(RegistryOperation::Search),
+        Duration::from_secs(8)
+    );
+    assert_eq!(
+        timeouts.budget(RegistryOperation::Detail),
+        Duration::from_secs(12)
+    );
 }
 
 // ---------------------------------------------------------------------------

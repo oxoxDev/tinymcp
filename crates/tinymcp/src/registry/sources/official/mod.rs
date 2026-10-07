@@ -31,24 +31,20 @@
 mod types;
 
 use std::collections::HashMap;
-use std::time::Duration;
 
 use parking_lot::Mutex;
 use serde_json::Value;
 
 use self::types::{OfficialListResponse, OfficialServer, latest_version};
 use super::encode::encode_path_segment;
-use super::shared::{MAX_ERROR_BODY_BYTES, cache, truncate};
-use super::types::non_blank_env;
+use super::shared::{cache, read_body};
+use super::types::{RegistryOperation, RegistryTimeouts, non_blank_env};
 use crate::error::{Error, Result};
 use crate::registry::Store;
 use tinymcp_bus::{McpRegistryAuthConfig, RegistryServerDetail, RegistryServerSummary};
 
 /// Where the registry lives when nothing overrides it.
 const DEFAULT_BASE: &str = "https://registry.modelcontextprotocol.io";
-
-/// How long to wait on the registry.
-const TIMEOUT: Duration = Duration::from_secs(15);
 
 /// How far the adapter will walk to reach a deep page with a cold map.
 ///
@@ -64,23 +60,33 @@ type CursorCache = Mutex<HashMap<(String, u32, u32), String>>;
 #[derive(Debug)]
 pub struct McpOfficialRegistry {
     http: reqwest::Client,
+    timeouts: RegistryTimeouts,
 }
 
 impl McpOfficialRegistry {
-    /// Builds the adapter.
+    /// Builds the adapter with the default [`RegistryTimeouts`].
     ///
     /// # Errors
     ///
     /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
     pub fn new() -> Result<Self> {
+        Self::with_timeouts(RegistryTimeouts::default())
+    }
+
+    /// Builds the adapter with its own time budgets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
+    pub fn with_timeouts(timeouts: RegistryTimeouts) -> Result<Self> {
         let http = reqwest::Client::builder()
-            .timeout(TIMEOUT)
+            .connect_timeout(timeouts.connect)
             .build()
             .map_err(|source| Error::ClientBuild {
                 source: Box::new(source.without_url()),
             })?;
 
-        Ok(Self { http })
+        Ok(Self { http, timeouts })
     }
 
     /// Searches the catalog.
@@ -174,7 +180,9 @@ impl McpOfficialRegistry {
             base_url(auth),
             encode_path_segment(qualified_name)
         );
-        let body = self.send(self.request(auth, &url), &url).await?;
+        let body = self
+            .send(self.request(auth, &url), &url, RegistryOperation::Detail)
+            .await?;
 
         let document: Value = serde_json::from_str(&body)
             .map_err(|error| Error::malformed(format!("official versions response: {error}")))?;
@@ -281,7 +289,8 @@ impl McpOfficialRegistry {
             request = request.query(&[("cursor", cursor)]);
         }
 
-        self.send(request, &url).await
+        self.send(request, &url, RegistryOperation::for_query(query))
+            .await
     }
 
     /// A request carrying the accept header and any configured token.
@@ -293,28 +302,15 @@ impl McpOfficialRegistry {
         }
     }
 
-    /// Sends a request and returns its body, judging the status first.
-    async fn send(&self, request: reqwest::RequestBuilder, url: &str) -> Result<String> {
-        let response = request
-            .send()
-            .await
-            .map_err(|error| Error::transport(url, error))?;
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|error| Error::transport(url, error))?;
-
-        if !status.is_success() {
-            return Err(Error::Http {
-                endpoint: crate::redact_endpoint(url),
-                status: status.as_u16(),
-                body: truncate(&body, MAX_ERROR_BODY_BYTES),
-            });
-        }
-
-        Ok(body)
+    /// Sends a request within `operation`'s budget and returns its body.
+    async fn send(
+        &self,
+        request: reqwest::RequestBuilder,
+        url: &str,
+        operation: RegistryOperation,
+    ) -> Result<String> {
+        let timeout = self.timeouts.budget(operation);
+        read_body(request.timeout(timeout), url, operation, timeout).await
     }
 }
 
