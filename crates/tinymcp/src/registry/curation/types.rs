@@ -122,7 +122,7 @@ pub fn curated_server(qualified_name: &str) -> Option<&'static CuratedServer> {
 }
 
 /// The qualified names of [`CURATED_SERVERS`], in the same order.
-const fn curated_names() -> [&'static str; CURATED_SERVERS.len()] {
+pub(super) const fn curated_names() -> [&'static str; CURATED_SERVERS.len()] {
     let mut names = [""; CURATED_SERVERS.len()];
     let mut index = 0;
     while index < CURATED_SERVERS.len() {

@@ -281,6 +281,11 @@ fn the_name_list_is_the_curated_entries_in_order() {
 }
 
 #[test]
+fn the_names_are_derived_from_the_entries_at_run_time_too() {
+    assert_eq!(super::types::curated_names().as_slice(), OFFICIAL_SERVERS);
+}
+
+#[test]
 fn the_name_list_still_reads_as_a_slice_of_names() {
     let names: &[&str] = OFFICIAL_SERVERS;
 
@@ -297,8 +302,8 @@ fn every_curated_entry_names_a_hosted_https_endpoint() {
             server.qualified_name,
             server.remote_url
         );
-        assert!(!server.display_name.trim().is_empty());
-        assert!(!server.description.trim().is_empty());
+        assert_ne!(server.display_name.trim(), "");
+        assert_ne!(server.description.trim(), "");
     }
 }
 
