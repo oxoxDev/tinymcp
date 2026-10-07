@@ -193,6 +193,160 @@ fn a_name_is_derived_from_its_last_segment_with_separators_spaced() {
 }
 
 // ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+
+/// A page recorded from the live registry with `version=latest`.
+const LATEST_PAGE: &str = include_str!("fixtures/latest_page.json");
+
+/// The rows of a recorded page.
+fn recorded(page: &str) -> Vec<tinymcp_bus::RegistryServerSummary> {
+    serde_json::from_str::<OfficialListResponse>(page)
+        .expect("the recorded page decodes")
+        .into_summaries()
+}
+
+/// The icon a recorded row ended up with.
+fn icon_of<'a>(rows: &'a [tinymcp_bus::RegistryServerSummary], name: &str) -> Option<&'a str> {
+    rows.iter()
+        .find(|row| row.qualified_name == name)
+        .unwrap_or_else(|| panic!("{name} is on the recorded page"))
+        .icon_url
+        .as_deref()
+}
+
+#[test]
+fn a_recorded_page_carries_its_declared_icons() {
+    let rows = recorded(LATEST_PAGE);
+
+    assert_eq!(
+        icon_of(&rows, "ae.projectory/mcp"),
+        Some("https://projectory.ae/apple-touch-icon.png")
+    );
+    assert_eq!(
+        icon_of(&rows, "africa.ugc/ugc"),
+        Some("https://ugc.africa/icon-512.png")
+    );
+    assert_eq!(icon_of(&rows, "ac.snag/snag"), None);
+}
+
+#[test]
+fn a_raster_icon_is_preferred_over_an_svg_listed_first() {
+    let rows = recorded(LATEST_PAGE);
+
+    assert_eq!(
+        icon_of(&rows, "ae.plantguide/dubai-gardening"),
+        Some("https://plantguide.ae/icons/icon-512.png")
+    );
+}
+
+#[test]
+fn an_svg_is_used_when_it_is_the_only_icon() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "svg/only",
+        "icons": [{ "src": "https://svg.test/mark.svg", "mimeType": "image/svg+xml" }],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://svg.test/mark.svg")
+    );
+}
+
+#[test]
+fn an_svg_is_recognised_by_its_extension_when_no_type_is_declared() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "mixed/icons",
+        "icons": [
+            { "src": "https://icons.test/mark.SVG?v=2" },
+            { "src": "https://icons.test/mark.webp" },
+        ],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://icons.test/mark.webp")
+    );
+}
+
+#[test]
+fn a_blank_icon_source_is_skipped() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "blank/icon",
+        "icons": [
+            { "src": "  ", "mimeType": "image/png" },
+            { "src": "https://icons.test/mark.svg", "mimeType": "image/svg+xml" },
+        ],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://icons.test/mark.svg")
+    );
+}
+
+#[test]
+fn the_legacy_icon_url_still_answers_when_no_icons_are_declared() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "legacy/icon",
+        "iconUrl": "https://legacy.test/icon.png",
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://legacy.test/icon.png")
+    );
+}
+
+#[test]
+fn declared_icons_win_over_the_legacy_icon_url() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "both/icons",
+        "iconUrl": "https://legacy.test/icon.png",
+        "icons": [{ "src": "https://icons.test/icon.png", "mimeType": "image/png" }],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://icons.test/icon.png")
+    );
+}
+
+#[test]
+fn a_server_declaring_no_icon_has_none() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "no/icon",
+        "iconUrl": " ",
+    }))
+    .unwrap();
+
+    assert_eq!(server.best_icon(), None);
+}
+
+#[test]
+fn a_detail_record_carries_the_preferred_icon() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "detail/icon",
+        "icons": [
+            { "src": "https://icons.test/mark.svg", "mimeType": "image/svg+xml" },
+            { "src": "https://icons.test/mark.png", "mimeType": "image/png" },
+        ],
+        "remotes": [{ "url": "https://api.test/mcp" }],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.into_detail().icon_url.as_deref(),
+        Some("https://icons.test/mark.png")
+    );
+}
+
+// ---------------------------------------------------------------------------
 // Trust signals
 // ---------------------------------------------------------------------------
 

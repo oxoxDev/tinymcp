@@ -114,6 +114,8 @@ pub(super) struct OfficialServer {
     title: Option<String>,
     #[serde(default)]
     description: Option<String>,
+    #[serde(default)]
+    icons: Vec<OfficialIcon>,
     #[serde(default, rename = "iconUrl")]
     icon_url: Option<String>,
     /// Hosted endpoints.
@@ -127,6 +129,28 @@ pub(super) struct OfficialServer {
 }
 
 impl OfficialServer {
+    /// The icon to show for this server.
+    ///
+    /// A raster image ahead of an SVG, and an SVG when it is the only one
+    /// declared. The legacy `iconUrl` answers when `icons` names nothing
+    /// usable.
+    pub(super) fn best_icon(&self) -> Option<String> {
+        let usable = || self.icons.iter().filter(|icon| icon.source().is_some());
+
+        usable()
+            .find(|icon| !icon.is_svg())
+            .or_else(|| usable().next())
+            .and_then(OfficialIcon::source)
+            .map(ToString::to_string)
+            .or_else(|| {
+                self.icon_url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|url| !url.is_empty())
+                    .map(ToString::to_string)
+            })
+    }
+
     /// The declared vendor site, when it declares a non-blank one.
     fn website(&self) -> Option<String> {
         self.website_url
@@ -185,6 +209,7 @@ impl OfficialServer {
     /// This server as a catalog row.
     pub(super) fn into_summary(self) -> RegistryServerSummary {
         let display_name = self.display_name();
+        let icon_url = self.best_icon();
         let website_url = self.website();
         let auth_kind = self
             .declares_secret_credential()
@@ -194,7 +219,7 @@ impl OfficialServer {
             qualified_name: self.name,
             display_name,
             description: self.description,
-            icon_url: self.icon_url,
+            icon_url,
             // The official registry publishes no install count.
             use_count: 0,
             is_deployed: !self.remotes.is_empty(),
@@ -210,6 +235,7 @@ impl OfficialServer {
     /// This server as a detail record, with one connection per way in.
     pub(super) fn into_detail(self) -> RegistryServerDetail {
         let display_name = self.display_name();
+        let icon_url = self.best_icon();
 
         let mut connections = Vec::with_capacity(self.remotes.len() + self.packages.len());
 
@@ -239,11 +265,42 @@ impl OfficialServer {
             qualified_name: self.name,
             display_name,
             description: self.description,
-            icon_url: self.icon_url,
+            icon_url,
             connections,
             source: SOURCE_MCP_OFFICIAL.to_string(),
             extra: ExtraFields::new(),
         }
+    }
+}
+
+/// One declared icon.
+#[derive(Debug, Clone, Deserialize)]
+struct OfficialIcon {
+    #[serde(default)]
+    src: Option<String>,
+    #[serde(default, rename = "mimeType")]
+    mime_type: Option<String>,
+}
+
+impl OfficialIcon {
+    /// The icon's address, when it is not blank.
+    fn source(&self) -> Option<&str> {
+        self.src
+            .as_deref()
+            .map(str::trim)
+            .filter(|src| !src.is_empty())
+    }
+
+    /// Whether the icon is an SVG, by declared type or by file extension.
+    fn is_svg(&self) -> bool {
+        if let Some(mime_type) = self.mime_type.as_deref() {
+            return mime_type.trim().eq_ignore_ascii_case("image/svg+xml");
+        }
+
+        self.source().is_some_and(|src| {
+            let path = src.split(['?', '#']).next().unwrap_or(src);
+            path.to_ascii_lowercase().ends_with(".svg")
+        })
     }
 }
 
