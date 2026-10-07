@@ -39,7 +39,7 @@ pub use official::McpOfficialRegistry;
 pub use smithery::SmitheryRegistry;
 pub use types::{
     Registries, RegistryOperation, RegistrySource, RegistryTimeouts, SOURCE_MCP_OFFICIAL,
-    SOURCE_SMITHERY,
+    SOURCE_SMITHERY, SourcePage,
 };
 
 #[cfg(test)]

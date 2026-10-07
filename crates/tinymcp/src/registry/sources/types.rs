@@ -11,7 +11,8 @@ use super::smithery::SmitheryRegistry;
 use crate::error::{Error, Result};
 use crate::registry::Store;
 use tinymcp_bus::{
-    McpRegistryAuthConfig, RegistryServerDetail, RegistryServerSummary, RegistrySettings,
+    McpRegistryAuthConfig, RegistryFreshness, RegistryServerDetail, RegistryServerSummary,
+    RegistrySettings,
 };
 
 /// The identifier Smithery stamps on its rows.
@@ -78,6 +79,9 @@ pub struct RegistryTimeouts {
     pub search: Duration,
     /// One server's detail.
     pub detail: Duration,
+    /// How long listings of the same kind skip the network after one timed
+    /// out, answering from what is cached instead.
+    pub cooldown: Duration,
 }
 
 impl RegistryTimeouts {
@@ -99,8 +103,20 @@ impl Default for RegistryTimeouts {
             browse: Duration::from_secs(15),
             search: Duration::from_secs(8),
             detail: Duration::from_secs(12),
+            cooldown: Duration::from_secs(60),
         }
     }
+}
+
+/// One page from one upstream catalog.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SourcePage {
+    /// The rows on this page.
+    pub servers: Vec<RegistryServerSummary>,
+    /// A best-effort upper bound on the page count. See [`Registries::search`].
+    pub total_pages: u32,
+    /// Where the rows came from.
+    pub freshness: RegistryFreshness,
 }
 
 /// One upstream catalog.
@@ -180,15 +196,19 @@ impl Registries {
 
     /// Searches one source.
     ///
-    /// Returns the rows and a best-effort upper bound on the page count. A
-    /// source that cannot know the true total reports the current page plus one
-    /// while more results exist, which is enough for a caller to offer a "next"
-    /// control without committing to a number it would have to walk the whole
-    /// catalog to learn.
+    /// Returns the rows, a best-effort upper bound on the page count, and
+    /// where the rows came from. A source that cannot know the true total
+    /// reports the current page plus one while more results exist, which is
+    /// enough for a caller to offer a "next" control without committing to a
+    /// number it would have to walk the whole catalog to learn.
+    ///
+    /// When the official registry cannot answer, the page is served from what
+    /// is cached and its freshness says so; see
+    /// [`RegistryFreshness`](tinymcp_bus::RegistryFreshness).
     ///
     /// # Errors
     ///
-    /// Returns whatever the upstream returns.
+    /// Returns whatever the upstream returns when nothing cached can stand in.
     pub async fn search(
         &self,
         store: &Store,
@@ -196,7 +216,7 @@ impl Registries {
         query: Option<&str>,
         page: u32,
         page_size: u32,
-    ) -> Result<(Vec<RegistryServerSummary>, u32)> {
+    ) -> Result<SourcePage> {
         let query = query.unwrap_or_default().trim();
         let page = page.max(1);
         let page_size = if page_size == 0 {
@@ -217,9 +237,15 @@ impl Registries {
             }
             RegistrySource::Smithery => {
                 let key = self.smithery_key();
-                self.smithery
+                let (servers, total_pages) = self
+                    .smithery
                     .search(store, key.as_deref(), query, page, page_size)
-                    .await
+                    .await?;
+                Ok(SourcePage {
+                    servers,
+                    total_pages,
+                    freshness: RegistryFreshness::Live,
+                })
             }
         }
     }

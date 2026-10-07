@@ -129,7 +129,9 @@ impl McpRegistry {
     ///
     /// Returns whatever an upstream returns. A source that fails takes the call
     /// with it rather than silently returning a partial catalog that reads as
-    /// "this server does not exist".
+    /// "this server does not exist". A source that answers from its cache
+    /// instead is not a failure; the page's `freshness` reports the least fresh
+    /// of the sources.
     pub async fn registry_search(
         &self,
         query: Option<&str>,
@@ -138,21 +140,23 @@ impl McpRegistry {
     ) -> Result<RegistrySearchPage> {
         let mut servers = Vec::new();
         let mut total_pages = page.max(1);
+        let mut freshness = RegistryFreshness::Live;
 
         for source in self.registries.searchable() {
-            let (found, pages) = self
+            let found = self
                 .registries
                 .search(&self.store, source, query, page, page_size)
                 .await?;
-            servers.extend(found);
-            total_pages = total_pages.max(pages);
+            servers.extend(found.servers);
+            total_pages = total_pages.max(found.total_pages);
+            freshness = freshness.max(found.freshness);
         }
 
         Ok(RegistrySearchPage {
             servers,
             page: page.max(1),
             total_pages,
-            freshness: RegistryFreshness::Live,
+            freshness,
         })
     }
 
