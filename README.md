@@ -222,8 +222,9 @@ when a key is configured.
   429 and 5xx answers.
 - **When the registry cannot answer**, a listing is served from the cache: an
   earlier answer to the same request first (`RegistryFreshness::Cached`), then,
-  for the first page of a search, cached catalog rows and cached server
-  details matching every word of the query (`RegistryFreshness::LocalFallback`).
+  for the first page of a search, curated servers, cached catalog rows and
+  cached server details matching every word of the query, curated servers
+  first (`RegistryFreshness::LocalFallback`).
   Only when neither exists does the error reach the caller. A listing that
   timed out skips the network for the next 60 s, still answering from the cache
   or local matches when either exists. `RegistrySearchPage::freshness` (contract 1.4) tells a host
