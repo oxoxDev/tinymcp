@@ -3,7 +3,8 @@
 //! [`McpHttpClient`] speaks MCP over HTTP: the `initialize` handshake and
 //! protocol-version negotiation, `tools/list` and `tools/call`, server-sent
 //! event draining, session lifecycle through `Mcp-Session-Id`, OAuth discovery
-//! from a `WWW-Authenticate` challenge, and a graceful `DELETE` on close.
+//! from a `WWW-Authenticate` challenge or the server's well-known metadata, and
+//! a graceful `DELETE` on close.
 //!
 //! # Three behaviors worth knowing before you read the code
 //!
@@ -30,6 +31,7 @@
 //! touches await. A synchronous mutex is the right shape; an async one held
 //! across a request would serialize the transport onto one in-flight call.
 
+mod discovery;
 mod headers;
 mod sse;
 
@@ -46,6 +48,7 @@ use std::collections::HashMap;
 
 use crate::error::{Error, Result};
 use crate::transport::{redact_endpoint, render_tool_result, validate_protocol_version};
+use discovery::{DISCOVERY_BUDGET, WellKnownOutcome};
 use headers::{
     apply_auth, header_to_string, mcp_param_headers_from_schema, parse_www_authenticate_challenge,
 };
@@ -80,6 +83,8 @@ pub struct McpHttpClient {
     client_info: McpClientInfo,
     auth: McpAuthConfig,
     state: Mutex<SessionState>,
+    discovery_http: reqwest::Client,
+    well_known: Mutex<Option<WellKnownOutcome>>,
 }
 
 /// Everything about the current session, guarded together.
@@ -180,15 +185,23 @@ impl McpHttpClientBuilder {
             // downgrades are not stripped — the policy closes that gap.
             .redirect(redirect_policy());
 
+        let mut discovery_builder = reqwest::Client::builder()
+            .timeout(DISCOVERY_BUDGET)
+            .connect_timeout(CONNECT_TIMEOUT)
+            .redirect(reqwest::redirect::Policy::none());
+
         if let Some(proxy) = self.proxy.as_ref() {
             builder = apply_proxy(builder, proxy);
+            discovery_builder = apply_proxy(discovery_builder, proxy);
         }
 
-        let http = builder.build().map_err(|source| Error::ClientBuild {
-            // Stripped for the reason on `Error::transport`: a proxy URL can
-            // carry credentials, and this error is printed.
+        // Stripped for the reason on `Error::transport`: a proxy URL can carry
+        // credentials, and this error is printed.
+        let build_error = |source: reqwest::Error| Error::ClientBuild {
             source: Box::new(source.without_url()),
-        })?;
+        };
+        let http = builder.build().map_err(build_error)?;
+        let discovery_http = discovery_builder.build().map_err(build_error)?;
 
         Ok(McpHttpClient {
             endpoint: self.endpoint,
@@ -197,6 +210,8 @@ impl McpHttpClientBuilder {
             client_info: McpClientInfo::from(&self.identity),
             auth: self.auth,
             state: Mutex::new(SessionState::default()),
+            discovery_http,
+            well_known: Mutex::new(None),
         })
     }
 }
@@ -473,6 +488,14 @@ impl McpHttpClient {
     /// challenge from the 401. Returns `Ok(None)` when the server answers
     /// anything else, which is the "no authorization needed" case.
     ///
+    /// A challenge naming `resource_metadata` is followed. A Bearer challenge
+    /// that names none is looked up on the server's origin instead: protected
+    /// resource metadata at `/.well-known/oauth-protected-resource` under the
+    /// endpoint's path and then at the root, and failing that the origin's own
+    /// RFC 8414 or `OpenID` metadata when its issuer is the origin. Neither the
+    /// context's shape nor its meaning changes: an empty authorization-server
+    /// list still means none was found.
+    ///
     /// An authorization server whose metadata cannot be fetched is omitted
     /// rather than failing the whole discovery: a protected resource may name
     /// several, and one being unreachable should not hide the others.
@@ -517,6 +540,17 @@ impl McpHttpClient {
             ),
             None => None,
         };
+
+        if protected_resource_metadata.is_none()
+            && is_bearer(&challenge.scheme)
+            && let WellKnownOutcome::Found(found) = self.well_known_authorization().await
+        {
+            return Ok(Some(McpAuthorizationContext {
+                challenge,
+                protected_resource_metadata: found.protected_resource_metadata,
+                authorization_server_metadata: found.authorization_servers,
+            }));
+        }
 
         let mut authorization_server_metadata = Vec::new();
         if let Some(metadata) = protected_resource_metadata.as_ref() {
@@ -873,13 +907,9 @@ impl McpHttpClient {
         let response_headers = response.headers().clone();
 
         if status == StatusCode::UNAUTHORIZED {
-            // Typed rather than a string, so a caller decides on data. The
-            // presence of `resource_metadata` is what separates a server that
-            // wants OAuth from one that wants a static credential.
             return Err(Error::Unauthorized {
                 endpoint: redact_endpoint(&self.endpoint),
-                resource_metadata: parse_www_authenticate_challenge(&response_headers)
-                    .and_then(|challenge| challenge.resource_metadata),
+                resource_metadata: self.oauth_metadata_url(&response_headers).await,
             });
         }
 
@@ -920,6 +950,32 @@ impl McpHttpClient {
         })
     }
 
+    /// The metadata URL that shows a 401 wants OAuth, or `None` for a static
+    /// credential.
+    ///
+    /// The challenge's own `resource_metadata` when it has one. Otherwise, for
+    /// a Bearer challenge, the well-known document that yielded an
+    /// authorization server with authorize and token endpoints.
+    async fn oauth_metadata_url(&self, headers: &reqwest::header::HeaderMap) -> Option<String> {
+        let challenge = parse_www_authenticate_challenge(headers)?;
+        if challenge.resource_metadata.is_some() {
+            return challenge.resource_metadata;
+        }
+        if !is_bearer(&challenge.scheme) {
+            return None;
+        }
+        match self.well_known_authorization().await {
+            WellKnownOutcome::Found(found) if found.offers_sign_in() => {
+                tracing::debug!(
+                    endpoint = %redact_endpoint(&self.endpoint),
+                    "[mcp] a 401 without resource_metadata found oauth metadata on the origin"
+                );
+                Some(found.metadata_url)
+            }
+            _ => None,
+        }
+    }
+
     /// Reads an SSE body only as far as the first data frame.
     ///
     /// A server may hold the stream open after replying; stopping at the reply
@@ -944,6 +1000,10 @@ impl McpHttpClient {
         // never followed by a blank line.
         parse_sse_message(&String::from_utf8_lossy(&raw))
     }
+}
+
+fn is_bearer(scheme: &str) -> bool {
+    scheme.eq_ignore_ascii_case("bearer")
 }
 
 fn rfc8414_metadata_url(issuer: &str) -> Result<String> {
