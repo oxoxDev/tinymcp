@@ -1,6 +1,6 @@
 //! Persistence for installed servers, their credentials, and the browse cache.
 //!
-//! Four tables in one `SQLite` file, `mcp_clients/mcp_clients.db` under the data
+//! Six tables in one `SQLite` file, `mcp_clients/mcp_clients.db` under the data
 //! directory the host supplies:
 //!
 //! | Table | Holds |
@@ -9,6 +9,8 @@
 //! | `mcp_client_env` | the credential values, keyed by server and name |
 //! | `mcp_registry_cache` | upstream browse responses, with a timestamp |
 //! | `mcp_tool_cache` | each server's last advertised tool list, keyed by a definition fingerprint |
+//! | `mcp_registry_index` | the local copy of the official catalog, one row per server |
+//! | `mcp_registry_index_state` | where that copy's sync stands |
 //!
 //! The filename and schema are unchanged from the code this was extracted
 //! from, so a user upgrading across the move keeps every server they installed.
@@ -33,6 +35,7 @@
 //!
 //! [`InstalledServer`]: tinymcp_bus::InstalledServer
 
+pub(crate) mod index;
 pub(crate) mod schema;
 mod tool_cache;
 mod types;
@@ -42,6 +45,7 @@ pub(crate) use tool_cache::fingerprint;
 pub(crate) use tool_cache::hex;
 pub use tool_cache::{CachedTools, installed_fingerprint, static_cache_key};
 pub use types::Store;
+pub(crate) use types::now_ms;
 
 #[cfg(test)]
 #[path = "mod_tests.rs"]

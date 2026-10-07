@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 use std::fmt;
+use std::sync::Arc;
 use std::time::Duration;
 
 use parking_lot::Mutex;
@@ -108,6 +109,31 @@ impl Default for RegistryTimeouts {
     }
 }
 
+/// How the official catalog adapter keeps its local index of the catalog.
+///
+/// The index is what a search answers from once it exists, because the
+/// registry's own search is far slower than paging its plain listing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegistryIndexSettings {
+    /// How old the last finished sync may be before a search or browse starts
+    /// another in the background.
+    pub refresh: Duration,
+    /// The most pages one sync reads before it stops and keeps what it has.
+    pub max_pages: u32,
+    /// How many servers each page asks for.
+    pub page_size: u32,
+}
+
+impl Default for RegistryIndexSettings {
+    fn default() -> Self {
+        Self {
+            refresh: Duration::from_secs(6 * 60 * 60),
+            max_pages: 200,
+            page_size: 100,
+        }
+    }
+}
+
 /// One page from one upstream catalog.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct SourcePage {
@@ -172,12 +198,37 @@ impl Registries {
     ///
     /// Returns [`Error::ClientBuild`] when an HTTP client cannot be built.
     pub fn new(auth: McpRegistryAuthConfig) -> Result<Self> {
+        Self::with_official(auth, McpOfficialRegistry::new()?)
+    }
+
+    /// Builds the dispatcher over an official catalog adapter built with its
+    /// own settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ClientBuild`] when the Smithery HTTP client cannot be
+    /// built.
+    pub fn with_official(
+        auth: McpRegistryAuthConfig,
+        official: McpOfficialRegistry,
+    ) -> Result<Self> {
         Ok(Self {
-            official: McpOfficialRegistry::new()?,
+            official,
             smithery: SmitheryRegistry::new()?,
             auth: Mutex::new(auth),
             cursors: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Starts a background sync of the official catalog's local index when
+    /// one is due, returning whether it did.
+    ///
+    /// A search answers from the index once a sync has finished; until then it
+    /// asks the registry. The sync never blocks the caller, and at most one
+    /// runs at a time.
+    pub fn refresh_index(&self, store: &Arc<Store>) -> bool {
+        let auth = self.auth.lock().clone();
+        self.official.refresh_index(store, &auth)
     }
 
     /// The sources that take part in a search.

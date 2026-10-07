@@ -586,7 +586,7 @@ fn decode_column<T: serde::de::DeserializeOwned>(
 /// A clock set before the epoch reads as zero rather than failing. Nothing here
 /// makes a decision that a wrong timestamp could make unsafe: the worst case is
 /// a cache entry that looks stale.
-pub(super) fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()

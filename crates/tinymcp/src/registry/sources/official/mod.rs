@@ -29,6 +29,12 @@
 //! it is; a timed-out listing also skips the network for a cooldown. The
 //! `fallback` module holds the order.
 //!
+//! # Searching a local index
+//!
+//! The registry's search is far slower than its plain listing, so the adapter
+//! keeps a local copy of the listing and answers queries from it once a sync
+//! has finished. The `index` module holds how it syncs and ranks.
+//!
 //! # The page count is a bound, not a total
 //!
 //! Knowing the true total would mean walking the whole cursor chain, which is
@@ -37,20 +43,26 @@
 //! decide whether to offer a "next" control.
 
 mod fallback;
+mod index;
 mod types;
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use parking_lot::Mutex;
 use serde_json::Value;
 
 use self::fallback::{Cooldown, serve_cached};
+use self::index::OfficialIndex;
 use self::types::{OfficialListResponse, OfficialServer, latest_version};
 use super::encode::encode_path_segment;
 use super::shared::{cache, read_body};
-use super::types::{RegistryOperation, RegistryTimeouts, SourcePage, non_blank_env};
+use super::types::{
+    RegistryIndexSettings, RegistryOperation, RegistryTimeouts, SourcePage, non_blank_env,
+};
 use crate::error::{Error, Result};
 use crate::registry::Store;
+use crate::registry::curation::curated_server;
 use tinymcp_bus::{McpRegistryAuthConfig, RegistryFreshness, RegistryServerDetail};
 
 /// Where the registry lives when nothing overrides it.
@@ -78,6 +90,7 @@ pub struct McpOfficialRegistry {
     http: reqwest::Client,
     timeouts: RegistryTimeouts,
     cooldown: Cooldown,
+    index: Arc<OfficialIndex>,
 }
 
 impl McpOfficialRegistry {
@@ -96,6 +109,15 @@ impl McpOfficialRegistry {
     ///
     /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
     pub fn with_timeouts(timeouts: RegistryTimeouts) -> Result<Self> {
+        Self::with_settings(timeouts, RegistryIndexSettings::default())
+    }
+
+    /// Builds the adapter with its own time budgets and index settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
+    pub fn with_settings(timeouts: RegistryTimeouts, index: RegistryIndexSettings) -> Result<Self> {
         let http = reqwest::Client::builder()
             .connect_timeout(timeouts.connect)
             .build()
@@ -104,13 +126,23 @@ impl McpOfficialRegistry {
             })?;
 
         Ok(Self {
+            index: Arc::new(OfficialIndex::new(http.clone(), timeouts, index)),
             http,
             timeouts,
             cooldown: Cooldown::default(),
         })
     }
 
+    /// Starts a background sync of the local catalog index when one is due,
+    /// returning whether it did. See the `index` module.
+    pub(super) fn refresh_index(&self, store: &Arc<Store>, auth: &McpRegistryAuthConfig) -> bool {
+        self.index.refresh(store, auth)
+    }
+
     /// Searches the catalog.
+    ///
+    /// Once the local index has finished a sync of the configured catalog, a
+    /// query is answered from it without asking the registry.
     ///
     /// When the registry cannot answer — it timed out, was unreachable, or
     /// answered 408, 429 or 5xx — the page is served from the cache instead,
@@ -130,6 +162,10 @@ impl McpOfficialRegistry {
         page: u32,
         page_size: u32,
     ) -> Result<SourcePage> {
+        if let Some(found) = index::search(store, &base_url(auth), query, page, page_size) {
+            return Ok(found);
+        }
+
         let cache_key = search_cache_key(query, page, page_size);
 
         if let Ok(Some(cached)) = store.cached(&cache_key)
@@ -219,11 +255,37 @@ impl McpOfficialRegistry {
 
     /// Fetches one server's detail.
     ///
+    /// A curated server the registry cannot describe — it does not list it, or
+    /// cannot be reached — is described from its curated entry instead.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::UnknownServer`] when the registry lists no version of
     /// it, plus whatever the upstream returns.
     pub(super) async fn get(
+        &self,
+        store: &Store,
+        auth: &McpRegistryAuthConfig,
+        qualified_name: &str,
+    ) -> Result<RegistryServerDetail> {
+        match self.get_listed(store, auth, qualified_name).await {
+            Err(error) => match curated_server(qualified_name) {
+                Some(curated) => {
+                    tracing::debug!(
+                        qualified_name,
+                        code = error.wire_name(),
+                        "official detail answered from the curated entry"
+                    );
+                    Ok(curated.to_detail())
+                }
+                None => Err(error),
+            },
+            found => found,
+        }
+    }
+
+    /// Fetches one server's detail from the registry or its cache.
+    async fn get_listed(
         &self,
         store: &Store,
         auth: &McpRegistryAuthConfig,

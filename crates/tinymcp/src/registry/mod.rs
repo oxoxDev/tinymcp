@@ -28,7 +28,9 @@ pub use oauth::{
 };
 pub use ops::McpRegistry;
 pub use setup::{SecretRef, SecretVault};
-pub use sources::{Registries, RegistryOperation, RegistrySource, RegistryTimeouts};
+pub use sources::{
+    Registries, RegistryIndexSettings, RegistryOperation, RegistrySource, RegistryTimeouts,
+};
 pub use store::Store;
 pub use supervisor::{
     ServerRef, SupervisedHost, Supervisor, SupervisorConfig, SupervisorEvent, TickReport,

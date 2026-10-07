@@ -49,6 +49,25 @@ pub(super) fn initialize(connection: &Connection) -> Result<()> {
                  fingerprint  TEXT NOT NULL,
                  tools_json   TEXT NOT NULL,
                  cached_at    INTEGER NOT NULL
+             );
+
+             CREATE TABLE IF NOT EXISTS mcp_registry_index (
+                 source          TEXT NOT NULL,
+                 qualified_name  TEXT NOT NULL,
+                 label           TEXT NOT NULL,
+                 description     TEXT NOT NULL,
+                 record_json     TEXT NOT NULL,
+                 synced_at       INTEGER NOT NULL,
+                 PRIMARY KEY (source, qualified_name)
+             );
+
+             CREATE TABLE IF NOT EXISTS mcp_registry_index_state (
+                 source      TEXT PRIMARY KEY,
+                 base_url    TEXT NOT NULL,
+                 cursor      TEXT,
+                 pages       INTEGER NOT NULL DEFAULT 0,
+                 started_at  INTEGER,
+                 synced_at   INTEGER
              );",
         )
         .map_err(|source| Error::store("creating the schema", source))?;

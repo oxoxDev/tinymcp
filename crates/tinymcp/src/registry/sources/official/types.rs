@@ -156,6 +156,51 @@ pub(super) fn latest_version(document: &Value) -> Option<&Value> {
         .and_then(|envelope| envelope.get("server"))
 }
 
+/// The server records on a list page worth keeping, one per server.
+///
+/// The same choice as [`OfficialListResponse::into_summaries`], over the raw
+/// records: installable, not deprecated, and the version marked latest. A row
+/// that does not decode as an envelope is skipped.
+pub(super) fn latest_server_records(document: &Value) -> Vec<&Value> {
+    let Some(rows) = document.get("servers").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+
+    let mut order: Vec<String> = Vec::new();
+    let mut chosen: HashMap<String, (bool, &Value)> = HashMap::new();
+
+    for row in rows {
+        let Ok(envelope) = OfficialServerEnvelope::deserialize(row) else {
+            continue;
+        };
+        let Some(record) = row.get("server") else {
+            continue;
+        };
+        if !envelope.is_installable() || envelope.is_deprecated() {
+            continue;
+        }
+
+        let latest = envelope.is_latest();
+        let name = envelope.server.name;
+        match chosen.get(&name) {
+            Some((true, _)) => {}
+            Some(_) => {
+                chosen.insert(name, (latest, record));
+            }
+            None => {
+                order.push(name.clone());
+                chosen.insert(name, (latest, record));
+            }
+        }
+    }
+
+    order
+        .iter()
+        .filter_map(|name| chosen.remove(name))
+        .map(|(_, record)| record)
+        .collect()
+}
+
 /// One server, as the official registry describes it.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(super) struct OfficialServer {
@@ -184,6 +229,11 @@ impl OfficialServer {
     /// Whether this server offers any way to connect at all.
     pub(super) fn is_installable(&self) -> bool {
         !self.remotes.is_empty() || !self.packages.is_empty()
+    }
+
+    /// The declared description.
+    pub(super) fn description(&self) -> Option<&str> {
+        self.description.as_deref()
     }
 
     /// The icon to show for this server.
