@@ -130,8 +130,8 @@ pub mod transport;
 pub mod version;
 
 pub use agent_tools::{
-    AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, McpCallError, McpCallOutcome,
-    RegistryTool, normalize_tool_arguments, registry_tool_specs,
+    AgentToolEffect, AgentToolSpec, ArgsError, MCP_CALL_RESULT_KIND, MCP_RESULT_KIND, McpCallError,
+    McpCallOutcome, McpResultEnvelope, RegistryTool, normalize_tool_arguments, registry_tool_specs,
 };
 pub use audit::{
     DEFAULT_LIST_LIMIT, ERROR_MESSAGE_MAX_BYTES, MAX_LIST_LIMIT, McpWriteListQuery, McpWriteRecord,
