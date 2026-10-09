@@ -61,7 +61,7 @@ schemars = { version = "1", default-features = false, features = ["derive"] }
 # to one package and `tinytools::ToolResult` stays one type. A second path
 # dependency could not be unified that way. Pinned to the revision tinyagents
 # vendors, which is the copy OpenHuman links.
-tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "82c0d975e2667e1c525afe525006134431641785" }
+tinytools = { git = "https://github.com/tinyhumansai/tinytools", rev = "59e1cd3bbdc96ad54c8647537601b7eb6ed5a6f4" }
 # `#[async_trait]` on the tool adapter and the invoker trait, matching how
 # `tinytools::Tool` itself is declared.
 async-trait = "0.1"

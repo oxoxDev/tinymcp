@@ -141,6 +141,18 @@ impl Tool for McpServerTool {
         Some(&self.family)
     }
 
+    /// `mcp.server:<family>`, `mcp.server_id:<id>` and `mcp.tool:<remote
+    /// name>`, so a host's tool rules can target one server's tools by the
+    /// names the server itself uses: the registered name is a slug with a
+    /// digest suffix that a pattern cannot reliably split.
+    fn tags(&self) -> Vec<String> {
+        vec![
+            format!("mcp.server:{}", self.family),
+            format!("mcp.server_id:{}", self.server_id),
+            format!("mcp.tool:{}", self.remote_name),
+        ]
+    }
+
     async fn execute(&self, arguments: Value) -> anyhow::Result<ToolResult> {
         // MCP requires an object. Some providers JSON-encode it, or send
         // nothing; read it the way every other call path does, and answer a
