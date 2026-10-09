@@ -31,6 +31,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicI64, Ordering};
 
+use futures_util::future::BoxFuture;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -109,7 +110,17 @@ impl McpStdioClient {
     /// is not the shape the protocol requires; and
     /// [`Error::UnsupportedProtocolVersion`] when the server settles on a
     /// version this client does not speak.
-    pub async fn initialize(&self) -> Result<McpInitializeResult> {
+    ///
+    /// Boxed at the method boundary so the async body is compiled once, inside
+    /// this crate, rather than re-instantiated by every downstream crate or
+    /// codegen unit that awaits it. Callers `.await` the returned future as
+    /// before.
+    #[inline(never)]
+    pub fn initialize(&self) -> BoxFuture<'_, Result<McpInitializeResult>> {
+        Box::pin(self.initialize_inner())
+    }
+
+    async fn initialize_inner(&self) -> Result<McpInitializeResult> {
         let mut state = self.state.lock().await;
         if let Some(session) = state.as_ref() {
             return Ok(session.initialize.clone());
@@ -221,7 +232,17 @@ impl McpStdioClient {
     ///
     /// Returns [`Error::MalformedResponse`] when the reply has no `tools`
     /// member, plus anything [`Self::initialize`] can return.
-    pub async fn list_tools(&self) -> Result<Vec<McpRemoteTool>> {
+    ///
+    /// Boxed at the method boundary so the async body is compiled once, inside
+    /// this crate, rather than re-instantiated by every downstream crate or
+    /// codegen unit that awaits it. Callers `.await` the returned future as
+    /// before.
+    #[inline(never)]
+    pub fn list_tools(&self) -> BoxFuture<'_, Result<Vec<McpRemoteTool>>> {
+        Box::pin(self.list_tools_inner())
+    }
+
+    async fn list_tools_inner(&self) -> Result<Vec<McpRemoteTool>> {
         self.initialize().await?;
 
         let mut state = self.state.lock().await;
@@ -247,7 +268,21 @@ impl McpStdioClient {
     ///
     /// Returns whatever the transport returns, plus anything
     /// [`Self::initialize`] can return.
-    pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<McpServerToolResult> {
+    ///
+    /// Boxed at the method boundary so the async body is compiled once, inside
+    /// this crate, rather than re-instantiated by every downstream crate or
+    /// codegen unit that awaits it. Callers `.await` the returned future as
+    /// before.
+    #[inline(never)]
+    pub fn call_tool<'a>(
+        &'a self,
+        name: &'a str,
+        arguments: Value,
+    ) -> BoxFuture<'a, Result<McpServerToolResult>> {
+        Box::pin(self.call_tool_inner(name, arguments))
+    }
+
+    async fn call_tool_inner(&self, name: &str, arguments: Value) -> Result<McpServerToolResult> {
         self.initialize().await?;
 
         let mut state = self.state.lock().await;
