@@ -29,6 +29,7 @@ use serde_json::{Value, json};
 use tinymcp_bus::{McpAuthConfig, McpCallError, McpCallOutcome};
 use tinytools::{PermissionLevel, Tool, ToolCallOptions, ToolResult};
 
+use super::naming::disambiguated_tool_name;
 use super::scrub::SecretScrubber;
 use crate::config_servers::{McpRegistrySource, McpServerRegistry};
 
@@ -293,6 +294,34 @@ impl Tool for McpCallTool {
 
     fn supports_markdown(&self) -> bool {
         true
+    }
+
+    /// The per-server tool this call reaches, described exactly as
+    /// [`McpServerTool`](super::McpServerTool) describes it for a configured
+    /// server: the same name, family and `mcp.*` tags. A host's tool rules then
+    /// bind the operation whichever route the model takes, and the target is
+    /// judged on the remote tool's own `arguments`.
+    fn indirect_target(&self, args: &Value) -> Option<tinytools::IndirectCall> {
+        let server = args.get("server")?.as_str()?;
+        let tool = args.get("tool")?.as_str()?;
+        let mut target = tinytools::ToolSubject::named(disambiguated_tool_name(server, server, tool))
+            .with_family(server)
+            .with_tag(format!("mcp.server:{server}"))
+            .with_tag(format!("mcp.server_id:{server}"))
+            .with_tag(format!("mcp.tool:{tool}"))
+            .with_permission(PermissionLevel::Execute);
+        target.category = Some(tinytools::ToolCategory::Workflow);
+        let call = tinytools::IndirectCall::new(target);
+        Some(
+            match args
+                .get("arguments")
+                .cloned()
+                .and_then(|arguments| tinymcp_bus::normalize_tool_arguments(arguments).ok())
+            {
+                Some(arguments) => call.with_arguments(Value::Object(arguments)),
+                None => call,
+            },
+        )
     }
 
     async fn execute_with_options(
