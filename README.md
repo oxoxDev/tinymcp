@@ -205,6 +205,59 @@ Enable the `tools` feature to expose each server tool as a
 `tinytools` is a git dependency so a host that links another checkout of it can
 `[patch]` the two into one package.
 
+## Browsing the catalogs
+
+`McpRegistry::registry_search` lists the official MCP registry, plus Smithery
+when a key is configured.
+
+- **One row per server.** The official adapter asks for `version=latest`, and
+  when a page still lists several versions of a server it keeps the one marked
+  `isLatest`. A detail lookup takes the same version.
+- **Icons** come from the registry's `icons[]`: a raster image ahead of an SVG,
+  an SVG when it is the only one, and the legacy `iconUrl` otherwise.
+- **Time budgets** are per request kind (`registry::RegistryTimeouts`): connect
+  5 s, browse 15 s, search 8 s, detail 12 s. A request that runs out is
+  `Error::RegistryTimeout` (`errors::REGISTRY_TIMEOUT` on the bus), and
+  `Error::is_registry_unavailable` groups it with transport failures and 408,
+  429 and 5xx answers.
+- **When the registry cannot answer**, a listing is served from the cache: an
+  earlier answer to the same request first (`RegistryFreshness::Cached`), then,
+  for the first page of a search, curated servers, cached catalog rows and
+  cached server details matching every word of the query, curated servers
+  first (`RegistryFreshness::LocalFallback`).
+  Only when neither exists does the error reach the caller. A listing that
+  timed out skips the network for the next 60 s, still answering from the cache
+  or local matches when either exists. `RegistrySearchPage::freshness` (contract 1.4) tells a host
+  which kind of answer it got.
+- **A local index answers searches.** The registry's `search=` can take tens of
+  seconds while its plain listing pages quickly, so the first search or browse
+  starts a background sync that pages `/v0/servers?version=latest` by cursor
+  into the store, one row per server. Once a sync has finished, a query is
+  answered from that copy without asking the registry
+  (`RegistryFreshness::Indexed`): every word must appear in the name, title or
+  description, and matches rank curated servers first, then name or title
+  matches, then description matches, each alphabetical. Until then a search
+  takes the path above. One background run reads at most 200 pages and then
+  pauses; the next search or browse resumes it from the stored cursor, and
+  only a sync whose cursor ran out is used or prunes anything. A failed page
+  keeps what was synced and the next sync resumes from it; at most one sync
+  runs at a time; the index re-syncs after
+  six hours (`registry::RegistryIndexSettings`, set with
+  `McpOfficialRegistry::with_settings` and `Registries::with_official`).
+  Browsing a page of the catalog is unchanged.
+- **Curated servers** (`curation::CURATED_SERVERS`) carry their hosted
+  endpoint, transport and authentication, not just a name; `OFFICIAL_SERVERS`
+  is the same list as names. A curated server matches a local search even when
+  the index lacks it, leads the first page of any search whose words it
+  matches (added when the registry's answer leaves it out), and its detail
+  comes from the entry when the registry cannot describe it. Slack's server (`com.slack/mcp`) is not in the registry
+  and accepts only OAuth clients Slack has registered in advance, so it is
+  marked `CuratedAuth::OauthPreregistered`. Swiggy's four servers
+  (`com.swiggy/food`, `com.swiggy/instamart`, `com.swiggy/dineout`,
+  `com.swiggy/scenes`) are not in the registry either; they take OAuth with
+  dynamic client registration, but Swiggy accepts only redirect URIs it has
+  allowlisted for the client.
+
 ## `mcp.json` and OAuth for hosts with their own store
 
 `registry::config_doc` reads and writes the `{ "mcpServers": { … } }` document.
@@ -223,6 +276,30 @@ check. `registry::OAuthBundle` is the stored refresh bundle's shape.
 `OAuthFlow::with_client_name` sets the name dynamic registration sends, which
 the authorization server shows on its consent screen; it defaults to
 `DEFAULT_CLIENT_NAME` (`TinyMCP`).
+
+OAuth discovery starts from the 401. When its challenge names
+`resource_metadata`, that protected-resource metadata is followed. When a
+Bearer challenge names none, the server's origin is checked in this order:
+
+1. `/.well-known/oauth-protected-resource` under the endpoint's path, then at
+   the root. A document whose `resource` is on the same origin is followed to
+   its authorization servers. A document that is authorization-server metadata
+   whose `issuer` is the origin is used as the authorization server; some
+   servers publish theirs there.
+2. The origin's own `/.well-known/oauth-authorization-server`, then
+   `/.well-known/openid-configuration`, accepted only when the `issuer` is the
+   origin (one trailing slash tolerated). This covers servers on the
+   2025-03-26 authorization spec, where the MCP server is its own
+   authorization server.
+
+Default `/authorize` and `/token` paths are never guessed. Every lookup is a
+`GET` to the MCP origin over a client that follows no redirects, reads at most
+64 KiB and gives up after about five seconds. A 3xx, 401, 403, 404 or 410
+counts as absent. A 5xx or a network failure is retried on the next 401. When an
+authorization server with authorize and token endpoints turns up,
+`Error::Unauthorized::resource_metadata` names the document that yielded it, so
+`advertises_oauth` and the connection status report a sign-in. A Basic
+challenge is never looked up.
 
 ## Static linking
 

@@ -23,6 +23,42 @@ pub struct RegistrySearchPage {
     /// beyond the current one while more results exist, and the current page
     /// when they do not.
     pub total_pages: u32,
+    /// Where these rows came from.
+    ///
+    /// Absent in a frame from a module older than contract 1.4, which reads as
+    /// [`RegistryFreshness::Live`].
+    #[serde(default)]
+    pub freshness: RegistryFreshness,
+}
+
+/// Where a page of catalog results came from.
+///
+/// Ordered from freshest to least fresh, so a page merged from several sources
+/// takes the [`Ord::max`] of theirs.
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[serde(rename_all = "snake_case")]
+#[non_exhaustive]
+pub enum RegistryFreshness {
+    /// Answered by the upstream catalogs, now or within the cache lifetime.
+    #[default]
+    Live,
+    /// Answered from the module's local copy of the official catalog, which it
+    /// re-syncs in the background.
+    ///
+    /// Complete as of the last sync, so it can trail the upstream by up to the
+    /// refresh interval.
+    Indexed,
+    /// The upstream could not answer; this is an earlier answer to the same
+    /// request, however old.
+    Cached,
+    /// The upstream could not answer and had no earlier answer to this
+    /// request; these are rows from earlier catalog pages that match the query.
+    ///
+    /// Partial by nature. A caller says so rather than presenting the rows as
+    /// everything the catalog holds.
+    LocalFallback,
 }
 
 /// What installing produced.

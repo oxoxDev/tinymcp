@@ -1657,6 +1657,29 @@ async fn floating_without_tagging_leaves_untagged_rows_in_order() {
     assert_eq!(names(&page), ["io.example/other", "com.notion/mcp"]);
 }
 
+#[tokio::test]
+async fn a_search_answers_from_the_local_index_once_the_background_sync_finishes() {
+    let registry = registry_over_catalog(&["io.example/other", "com.notion/mcp"]).await;
+
+    let mut page = registry
+        .registry_search(Some("notion"), 1, 20)
+        .await
+        .unwrap();
+    for _ in 0..500 {
+        if page.freshness == tinymcp_bus::RegistryFreshness::Indexed {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        page = registry
+            .registry_search(Some("notion"), 1, 20)
+            .await
+            .unwrap();
+    }
+
+    assert_eq!(page.freshness, tinymcp_bus::RegistryFreshness::Indexed);
+    assert_eq!(names(&page)[0], "com.notion/mcp");
+}
+
 // ---------------------------------------------------------------------------
 // The background-work seams
 // ---------------------------------------------------------------------------

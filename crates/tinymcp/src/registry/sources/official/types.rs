@@ -5,6 +5,8 @@
 //! exception, marked below, where permissiveness caused the bug it was supposed
 //! to prevent.
 
+use std::collections::HashMap;
+
 use serde::Deserialize;
 use serde_json::{Map, Value};
 
@@ -30,21 +32,41 @@ pub(super) struct OfficialListResponse {
 }
 
 impl OfficialListResponse {
-    /// The rows worth showing, deduplicated by name.
+    /// The rows worth showing, one per server.
     ///
     /// Drops anything that cannot actually be installed and anything the
     /// registry has deprecated. Both are noise: a row a user cannot install is
     /// a dead end they can only discover by trying.
+    ///
+    /// A page can list several versions of one server. The one the registry
+    /// marks latest is kept; without that mark, the last one listed is, since
+    /// the registry lists a server's versions oldest first. Each server keeps
+    /// the position of its first row.
     pub(super) fn into_summaries(self) -> Vec<RegistryServerSummary> {
-        let mut seen = std::collections::HashSet::new();
+        let mut order: Vec<String> = Vec::new();
+        let mut chosen: HashMap<String, OfficialServerEnvelope> = HashMap::new();
 
-        self.servers
+        for envelope in self
+            .servers
             .into_iter()
             .filter(|envelope| envelope.is_installable() && !envelope.is_deprecated())
-            .filter_map(|envelope| {
-                seen.insert(envelope.server.name.clone())
-                    .then(|| envelope.server.into_summary())
-            })
+        {
+            match chosen.get(&envelope.server.name) {
+                Some(current) if current.is_latest() => {}
+                Some(_) => {
+                    chosen.insert(envelope.server.name.clone(), envelope);
+                }
+                None => {
+                    order.push(envelope.server.name.clone());
+                    chosen.insert(envelope.server.name.clone(), envelope);
+                }
+            }
+        }
+
+        order
+            .iter()
+            .filter_map(|name| chosen.remove(name))
+            .map(|envelope| envelope.server.into_summary())
             .collect()
     }
 
@@ -87,7 +109,7 @@ struct OfficialServerEnvelope {
 impl OfficialServerEnvelope {
     /// Whether this row offers any way to connect at all.
     fn is_installable(&self) -> bool {
-        !self.server.remotes.is_empty() || !self.server.packages.is_empty()
+        self.server.is_installable()
     }
 
     /// Whether the registry has withdrawn this version.
@@ -95,13 +117,88 @@ impl OfficialServerEnvelope {
     /// Absent metadata counts as not deprecated, which is what a row cached by
     /// an older build looks like.
     fn is_deprecated(&self) -> bool {
-        self.meta
-            .as_ref()
-            .and_then(|meta| meta.get(REGISTRY_META_KEY))
+        registry_meta(self.meta.as_ref())
             .and_then(|registry| registry.get("status"))
             .and_then(Value::as_str)
             == Some(STATUS_DEPRECATED)
     }
+
+    /// Whether the registry marks this version as the server's latest.
+    fn is_latest(&self) -> bool {
+        marked_latest(self.meta.as_ref())
+    }
+}
+
+/// The registry's own bookkeeping inside a row's `_meta`.
+fn registry_meta(meta: Option<&Value>) -> Option<&Value> {
+    meta.and_then(|meta| meta.get(REGISTRY_META_KEY))
+}
+
+/// Whether a row's `_meta` marks it as the server's latest version.
+fn marked_latest(meta: Option<&Value>) -> bool {
+    registry_meta(meta)
+        .and_then(|registry| registry.get("isLatest"))
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
+/// The server record to use from a versions response.
+///
+/// The version the registry marks latest, or the first one listed when none
+/// is marked.
+pub(super) fn latest_version(document: &Value) -> Option<&Value> {
+    let envelopes = document.get("servers")?.as_array()?;
+
+    envelopes
+        .iter()
+        .find(|envelope| marked_latest(envelope.get("_meta")))
+        .or_else(|| envelopes.first())
+        .and_then(|envelope| envelope.get("server"))
+}
+
+/// The server records on a list page worth keeping, one per server.
+///
+/// The same choice as [`OfficialListResponse::into_summaries`], over the raw
+/// records: installable, not deprecated, and the version marked latest. A row
+/// that does not decode as an envelope is skipped.
+pub(super) fn latest_server_records(document: &Value) -> Vec<&Value> {
+    let Some(rows) = document.get("servers").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+
+    let mut order: Vec<String> = Vec::new();
+    let mut chosen: HashMap<String, (bool, &Value)> = HashMap::new();
+
+    for row in rows {
+        let Ok(envelope) = OfficialServerEnvelope::deserialize(row) else {
+            continue;
+        };
+        let Some(record) = row.get("server") else {
+            continue;
+        };
+        if !envelope.is_installable() || envelope.is_deprecated() {
+            continue;
+        }
+
+        let latest = envelope.is_latest();
+        let name = envelope.server.name;
+        match chosen.get(&name) {
+            Some((true, _)) => {}
+            Some(_) => {
+                chosen.insert(name, (latest, record));
+            }
+            None => {
+                order.push(name.clone());
+                chosen.insert(name, (latest, record));
+            }
+        }
+    }
+
+    order
+        .iter()
+        .filter_map(|name| chosen.remove(name))
+        .map(|(_, record)| record)
+        .collect()
 }
 
 /// One server, as the official registry describes it.
@@ -114,6 +211,8 @@ pub(super) struct OfficialServer {
     title: Option<String>,
     #[serde(default)]
     description: Option<String>,
+    #[serde(default)]
+    icons: Vec<OfficialIcon>,
     #[serde(default, rename = "iconUrl")]
     icon_url: Option<String>,
     /// Hosted endpoints.
@@ -127,6 +226,38 @@ pub(super) struct OfficialServer {
 }
 
 impl OfficialServer {
+    /// Whether this server offers any way to connect at all.
+    pub(super) fn is_installable(&self) -> bool {
+        !self.remotes.is_empty() || !self.packages.is_empty()
+    }
+
+    /// The declared description.
+    pub(super) fn description(&self) -> Option<&str> {
+        self.description.as_deref()
+    }
+
+    /// The icon to show for this server.
+    ///
+    /// A raster image ahead of an SVG, and an SVG when it is the only one
+    /// declared. The legacy `iconUrl` answers when `icons` names nothing
+    /// usable.
+    pub(super) fn best_icon(&self) -> Option<String> {
+        let usable = || self.icons.iter().filter(|icon| icon.source().is_some());
+
+        usable()
+            .find(|icon| !icon.is_svg())
+            .or_else(|| usable().next())
+            .and_then(OfficialIcon::source)
+            .map(ToString::to_string)
+            .or_else(|| {
+                self.icon_url
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|url| !url.is_empty())
+                    .map(ToString::to_string)
+            })
+    }
+
     /// The declared vendor site, when it declares a non-blank one.
     fn website(&self) -> Option<String> {
         self.website_url
@@ -185,6 +316,7 @@ impl OfficialServer {
     /// This server as a catalog row.
     pub(super) fn into_summary(self) -> RegistryServerSummary {
         let display_name = self.display_name();
+        let icon_url = self.best_icon();
         let website_url = self.website();
         let auth_kind = self
             .declares_secret_credential()
@@ -194,7 +326,7 @@ impl OfficialServer {
             qualified_name: self.name,
             display_name,
             description: self.description,
-            icon_url: self.icon_url,
+            icon_url,
             // The official registry publishes no install count.
             use_count: 0,
             is_deployed: !self.remotes.is_empty(),
@@ -210,6 +342,7 @@ impl OfficialServer {
     /// This server as a detail record, with one connection per way in.
     pub(super) fn into_detail(self) -> RegistryServerDetail {
         let display_name = self.display_name();
+        let icon_url = self.best_icon();
 
         let mut connections = Vec::with_capacity(self.remotes.len() + self.packages.len());
 
@@ -239,11 +372,42 @@ impl OfficialServer {
             qualified_name: self.name,
             display_name,
             description: self.description,
-            icon_url: self.icon_url,
+            icon_url,
             connections,
             source: SOURCE_MCP_OFFICIAL.to_string(),
             extra: ExtraFields::new(),
         }
+    }
+}
+
+/// One declared icon.
+#[derive(Debug, Clone, Deserialize)]
+struct OfficialIcon {
+    #[serde(default)]
+    src: Option<String>,
+    #[serde(default, rename = "mimeType")]
+    mime_type: Option<String>,
+}
+
+impl OfficialIcon {
+    /// The icon's address, when it is not blank.
+    fn source(&self) -> Option<&str> {
+        self.src
+            .as_deref()
+            .map(str::trim)
+            .filter(|src| !src.is_empty())
+    }
+
+    /// Whether the icon is an SVG, by declared type or by file extension.
+    fn is_svg(&self) -> bool {
+        if let Some(mime_type) = self.mime_type.as_deref() {
+            return mime_type.trim().eq_ignore_ascii_case("image/svg+xml");
+        }
+
+        self.source().is_some_and(|src| {
+            let path = src.split(['?', '#']).next().unwrap_or(src);
+            path.to_ascii_lowercase().ends_with(".svg")
+        })
     }
 }
 

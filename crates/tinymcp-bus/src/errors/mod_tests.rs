@@ -6,7 +6,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use super::{ALL, PREFIX, UNAUTHORIZED};
+use super::{ALL, PREFIX, REGISTRY_TIMEOUT, UNAUTHORIZED};
 
 #[test]
 fn every_name_shares_the_prefix_and_has_a_suffix() {
@@ -43,4 +43,12 @@ fn the_prefix_is_distinct_from_the_bus_own_error_namespace() {
 fn the_unauthorized_name_is_pinned() {
     // A host anchors its needs-auth classification on this string.
     assert_eq!(UNAUTHORIZED, "ai.tinyhumans.tinymcp.Error.Unauthorized");
+}
+
+#[test]
+fn the_registry_timeout_name_is_pinned() {
+    assert_eq!(
+        REGISTRY_TIMEOUT,
+        "ai.tinyhumans.tinymcp.Error.RegistryTimeout"
+    );
 }

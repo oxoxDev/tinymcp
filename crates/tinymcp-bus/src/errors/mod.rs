@@ -86,6 +86,11 @@ pub const SERVER_BIND: &str = "ai.tinyhumans.tinymcp.Error.ServerBind";
 pub const CONFIG_DOC: &str = "ai.tinyhumans.tinymcp.Error.ConfigDoc";
 /// Tool arguments were valid JSON but did not match the tool schema.
 pub const INVALID_ARGUMENTS: &str = "ai.tinyhumans.tinymcp.Error.InvalidArguments";
+/// An upstream registry did not answer within its time budget.
+///
+/// Transient: a host shows the catalog as unavailable for now and offers a
+/// retry, rather than reporting a failure.
+pub const REGISTRY_TIMEOUT: &str = "ai.tinyhumans.tinymcp.Error.RegistryTimeout";
 
 /// Every name in this table.
 pub const ALL: &[&str] = &[
@@ -113,6 +118,7 @@ pub const ALL: &[&str] = &[
     SERVER_BIND,
     CONFIG_DOC,
     INVALID_ARGUMENTS,
+    REGISTRY_TIMEOUT,
 ];
 
 #[cfg(test)]

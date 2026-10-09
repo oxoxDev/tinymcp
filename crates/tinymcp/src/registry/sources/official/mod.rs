@@ -1,8 +1,9 @@
 //! The official `modelcontextprotocol/registry` catalog.
 //!
-//! `GET /v0/servers` lists; `GET /v0/servers/{name}/versions` details — the
-//! registry has no single-server endpoint, so a detail lookup reads the version
-//! list and takes the newest.
+//! `GET /v0/servers?version=latest` lists one row per server;
+//! `GET /v0/servers/{name}/versions` details — the registry has no
+//! single-server endpoint, so a detail lookup reads the version list and takes
+//! the one marked latest.
 //!
 //! # Pages over cursors
 //!
@@ -20,6 +21,20 @@
 //! The walk also consults the stored response cache before making a request,
 //! so a cold in-memory map after a restart does not mean a cold network.
 //!
+//! # When the registry cannot answer
+//!
+//! Each kind of request has its own time budget ([`RegistryTimeouts`]). A
+//! listing that times out, cannot connect, or is answered 408, 429 or 5xx is
+//! served from the cache instead, and its freshness says which kind of answer
+//! it is; a timed-out listing also skips the network for a cooldown. The
+//! `fallback` module holds the order.
+//!
+//! # Searching a local index
+//!
+//! The registry's search is far slower than its plain listing, so the adapter
+//! keeps a local copy of the listing and answers queries from it once a sync
+//! has finished. The `index` module holds how it syncs and ranks.
+//!
 //! # The page count is a bound, not a total
 //!
 //! Knowing the true total would mean walking the whole cursor chain, which is
@@ -27,27 +42,33 @@
 //! the current one while more results exist, which is what a caller needs to
 //! decide whether to offer a "next" control.
 
+mod fallback;
+mod index;
 mod types;
 
 use std::collections::HashMap;
-use std::time::Duration;
+use std::sync::Arc;
 
 use parking_lot::Mutex;
 use serde_json::Value;
 
-use self::types::{OfficialListResponse, OfficialServer};
+use self::fallback::{Cooldown, serve_cached};
+use self::index::OfficialIndex;
+use self::types::{OfficialListResponse, OfficialServer, latest_version};
 use super::encode::encode_path_segment;
-use super::shared::{MAX_ERROR_BODY_BYTES, cache, truncate};
-use super::types::non_blank_env;
+use super::shared::{cache, read_body};
+use super::types::{
+    RegistryIndexSettings, RegistryOperation, RegistryTimeouts, SourcePage, non_blank_env,
+};
 use crate::error::{Error, Result};
 use crate::registry::Store;
-use tinymcp_bus::{McpRegistryAuthConfig, RegistryServerDetail, RegistryServerSummary};
+use crate::registry::curation::{CURATED_SERVERS, curated_server};
+use tinymcp_bus::{
+    McpRegistryAuthConfig, RegistryFreshness, RegistryServerDetail, RegistryServerSummary,
+};
 
 /// Where the registry lives when nothing overrides it.
 const DEFAULT_BASE: &str = "https://registry.modelcontextprotocol.io";
-
-/// How long to wait on the registry.
-const TIMEOUT: Duration = Duration::from_secs(15);
 
 /// How far the adapter will walk to reach a deep page with a cold map.
 ///
@@ -56,6 +77,12 @@ const TIMEOUT: Duration = Duration::from_secs(15);
 /// denial of service aimed at someone else.
 const MAX_CURSOR_WALK_PAGES: u32 = 50;
 
+/// The cache key prefix every page of the unfiltered catalog shares.
+const BROWSE_CACHE_PREFIX: &str = "mcp_official:search:latest::";
+
+/// The cache key prefix every server detail shares.
+const DETAIL_CACHE_PREFIX: &str = "mcp_official:detail:";
+
 /// The map from page to the cursor that produced it.
 type CursorCache = Mutex<HashMap<(String, u32, u32), String>>;
 
@@ -63,31 +90,71 @@ type CursorCache = Mutex<HashMap<(String, u32, u32), String>>;
 #[derive(Debug)]
 pub struct McpOfficialRegistry {
     http: reqwest::Client,
+    timeouts: RegistryTimeouts,
+    cooldown: Cooldown,
+    index: Arc<OfficialIndex>,
 }
 
 impl McpOfficialRegistry {
-    /// Builds the adapter.
+    /// Builds the adapter with the default [`RegistryTimeouts`].
     ///
     /// # Errors
     ///
     /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
     pub fn new() -> Result<Self> {
+        Self::with_timeouts(RegistryTimeouts::default())
+    }
+
+    /// Builds the adapter with its own time budgets.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
+    pub fn with_timeouts(timeouts: RegistryTimeouts) -> Result<Self> {
+        Self::with_settings(timeouts, RegistryIndexSettings::default())
+    }
+
+    /// Builds the adapter with its own time budgets and index settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ClientBuild`] when the HTTP client cannot be built.
+    pub fn with_settings(timeouts: RegistryTimeouts, index: RegistryIndexSettings) -> Result<Self> {
         let http = reqwest::Client::builder()
-            .timeout(TIMEOUT)
+            .connect_timeout(timeouts.connect)
             .build()
             .map_err(|source| Error::ClientBuild {
                 source: Box::new(source.without_url()),
             })?;
 
-        Ok(Self { http })
+        Ok(Self {
+            index: Arc::new(OfficialIndex::new(http.clone(), timeouts, index)),
+            http,
+            timeouts,
+            cooldown: Cooldown::default(),
+        })
+    }
+
+    /// Starts a background sync of the local catalog index when one is due,
+    /// returning whether it did. See the `index` module.
+    pub(super) fn refresh_index(&self, store: &Arc<Store>, auth: &McpRegistryAuthConfig) -> bool {
+        self.index.refresh(store, auth)
     }
 
     /// Searches the catalog.
     ///
+    /// Once the local index has finished a sync of the configured catalog, a
+    /// query is answered from it without asking the registry.
+    ///
+    /// When the registry cannot answer — it timed out, was unreachable, or
+    /// answered 408, 429 or 5xx — the page is served from the cache instead,
+    /// with its freshness saying so. The fallback module sets out the order.
+    ///
     /// # Errors
     ///
     /// Returns [`Error::MalformedResponse`] when a deep page is asked for with
-    /// a cold map, plus whatever the upstream returns.
+    /// a cold map, and whatever the upstream returns when nothing cached can
+    /// stand in.
     pub(super) async fn search(
         &self,
         store: &Store,
@@ -96,19 +163,82 @@ impl McpOfficialRegistry {
         query: &str,
         page: u32,
         page_size: u32,
-    ) -> Result<(Vec<RegistryServerSummary>, u32)> {
+    ) -> Result<SourcePage> {
+        if let Some(found) = index::search(store, &base_url(auth), query, page, page_size) {
+            return Ok(found);
+        }
+
+        let mut found = self
+            .search_registry(store, auth, cursors, query, page, page_size)
+            .await?;
+        if page == 1 {
+            lead_with_curated(&mut found.servers, query, page_size);
+        }
+        Ok(found)
+    }
+
+    /// Searches without the index: the cache, then the registry, then the
+    /// fallback.
+    async fn search_registry(
+        &self,
+        store: &Store,
+        auth: &McpRegistryAuthConfig,
+        cursors: &CursorCache,
+        query: &str,
+        page: u32,
+        page_size: u32,
+    ) -> Result<SourcePage> {
         let cache_key = search_cache_key(query, page, page_size);
 
         if let Ok(Some(cached)) = store.cached(&cache_key)
             && let Ok(parsed) = serde_json::from_str::<OfficialListResponse>(&cached)
         {
             tracing::debug!(page, page_size, "official search cache hit");
-            let total_pages = page_bound(page, parsed.next_cursor().is_some());
-            if let Some(cursor) = parsed.next_cursor() {
-                remember_cursor(cursors, query, page_size, page, cursor.to_string());
-            }
-            return Ok((parsed.into_summaries(), total_pages));
+            return Ok(served(parsed, cursors, query, page, page_size));
         }
+
+        let operation = RegistryOperation::for_query(query);
+        let url = list_url(auth);
+
+        if let Some(error) = self
+            .cooldown
+            .active(operation, &url, self.timeouts.cooldown)
+        {
+            tracing::debug!(%operation, "official registry cooling down; answering from the cache");
+            return serve_cached(store, cursors, query, page, page_size).ok_or(error);
+        }
+
+        match self
+            .search_live(store, auth, cursors, query, page, page_size)
+            .await
+        {
+            Err(error) if error.is_registry_unavailable() => {
+                if error.is_timeout() {
+                    self.cooldown
+                        .start(operation, &url, self.timeouts.budget(operation));
+                }
+                tracing::debug!(
+                    %operation,
+                    code = error.wire_name(),
+                    "official registry unavailable; answering from the cache"
+                );
+                serve_cached(store, cursors, query, page, page_size).ok_or(error)
+            }
+            outcome => outcome,
+        }
+    }
+
+    /// Searches the registry itself, filling the caches on the way.
+    async fn search_live(
+        &self,
+        store: &Store,
+        auth: &McpRegistryAuthConfig,
+        cursors: &CursorCache,
+        query: &str,
+        page: u32,
+        page_size: u32,
+    ) -> Result<SourcePage> {
+        let cache_key = search_cache_key(query, page, page_size);
 
         let cursor = match page {
             1 => None,
@@ -123,7 +253,13 @@ impl McpOfficialRegistry {
                         // The chain ended before reaching the page asked for.
                         // An empty result reporting this page as the last is
                         // what stops a caller paging further.
-                        None => return Ok((Vec::new(), page)),
+                        None => {
+                            return Ok(SourcePage {
+                                servers: Vec::new(),
+                                total_pages: page,
+                                freshness: RegistryFreshness::Live,
+                            });
+                        }
                     }
                 }
             },
@@ -134,20 +270,15 @@ impl McpOfficialRegistry {
             .await?;
         let parsed: OfficialListResponse = serde_json::from_str(&body)
             .map_err(|error| Error::malformed(format!("official list response: {error}")))?;
-
-        let next_cursor = parsed.next_cursor().map(ToString::to_string);
-        if let Some(cursor) = next_cursor.clone() {
-            remember_cursor(cursors, query, page_size, page, cursor);
-        }
         cache(store, &cache_key, &body);
 
-        Ok((
-            parsed.into_summaries(),
-            page_bound(page, next_cursor.is_some()),
-        ))
+        Ok(served(parsed, cursors, query, page, page_size))
     }
 
     /// Fetches one server's detail.
+    ///
+    /// A curated server the registry cannot describe — it does not list it, or
+    /// cannot be reached — is described from its curated entry instead.
     ///
     /// # Errors
     ///
@@ -159,7 +290,30 @@ impl McpOfficialRegistry {
         auth: &McpRegistryAuthConfig,
         qualified_name: &str,
     ) -> Result<RegistryServerDetail> {
-        let cache_key = format!("mcp_official:detail:{qualified_name}");
+        match self.get_listed(store, auth, qualified_name).await {
+            Err(error) => match curated_server(qualified_name) {
+                Some(curated) => {
+                    tracing::debug!(
+                        qualified_name,
+                        code = error.wire_name(),
+                        "official detail answered from the curated entry"
+                    );
+                    Ok(curated.to_detail())
+                }
+                None => Err(error),
+            },
+            found => found,
+        }
+    }
+
+    /// Fetches one server's detail from the registry or its cache.
+    async fn get_listed(
+        &self,
+        store: &Store,
+        auth: &McpRegistryAuthConfig,
+        qualified_name: &str,
+    ) -> Result<RegistryServerDetail> {
+        let cache_key = format!("{DETAIL_CACHE_PREFIX}{qualified_name}");
 
         if let Ok(Some(cached)) = store.cached(&cache_key)
             && let Ok(server) = serde_json::from_str::<OfficialServer>(&cached)
@@ -173,23 +327,21 @@ impl McpOfficialRegistry {
             base_url(auth),
             encode_path_segment(qualified_name)
         );
-        let body = self.send(self.request(auth, &url), &url).await?;
+        let body = self
+            .send(self.request(auth, &url), &url, RegistryOperation::Detail)
+            .await?;
 
         let document: Value = serde_json::from_str(&body)
             .map_err(|error| Error::malformed(format!("official versions response: {error}")))?;
 
-        // The versions endpoint answers with the same envelope array as the
-        // list endpoint; the newest version leads it.
-        let newest = document
-            .pointer("/servers/0/server")
-            .ok_or_else(|| Error::UnknownServer {
-                server: qualified_name.to_string(),
-            })?;
+        let latest = latest_version(&document).ok_or_else(|| Error::UnknownServer {
+            server: qualified_name.to_string(),
+        })?;
 
         // Cached as the inner object, which is what the hit path above reads.
-        cache(store, &cache_key, &newest.to_string());
+        cache(store, &cache_key, &latest.to_string());
 
-        let server: OfficialServer = serde_json::from_value(newest.clone())
+        let server: OfficialServer = serde_json::from_value(latest.clone())
             .map_err(|error| Error::malformed(format!("official server record: {error}")))?;
 
         Ok(server.into_detail())
@@ -272,10 +424,11 @@ impl McpOfficialRegistry {
             "fetching an official registry page"
         );
 
-        let url = format!("{}/v0/servers", base_url(auth));
+        let url = list_url(auth);
         let mut request = self
             .request(auth, &url)
-            .query(&[("limit", limit.to_string())]);
+            .query(&[("limit", limit.to_string())])
+            .query(&[("version", "latest")]);
         if !query.is_empty() {
             request = request.query(&[("search", query)]);
         }
@@ -283,7 +436,8 @@ impl McpOfficialRegistry {
             request = request.query(&[("cursor", cursor)]);
         }
 
-        self.send(request, &url).await
+        self.send(request, &url, RegistryOperation::for_query(query))
+            .await
     }
 
     /// A request carrying the accept header and any configured token.
@@ -295,34 +449,77 @@ impl McpOfficialRegistry {
         }
     }
 
-    /// Sends a request and returns its body, judging the status first.
-    async fn send(&self, request: reqwest::RequestBuilder, url: &str) -> Result<String> {
-        let response = request
-            .send()
-            .await
-            .map_err(|error| Error::transport(url, error))?;
-
-        let status = response.status();
-        let body = response
-            .text()
-            .await
-            .map_err(|error| Error::transport(url, error))?;
-
-        if !status.is_success() {
-            return Err(Error::Http {
-                endpoint: crate::redact_endpoint(url),
-                status: status.as_u16(),
-                body: truncate(&body, MAX_ERROR_BODY_BYTES),
-            });
-        }
-
-        Ok(body)
+    /// Sends a request within `operation`'s budget and returns its body.
+    async fn send(
+        &self,
+        request: reqwest::RequestBuilder,
+        url: &str,
+        operation: RegistryOperation,
+    ) -> Result<String> {
+        let timeout = self.timeouts.budget(operation);
+        read_body(request.timeout(timeout), url, operation, timeout).await
     }
+}
+
+/// A parsed page as served, recording the cursor it carries.
+fn served(
+    parsed: OfficialListResponse,
+    cursors: &CursorCache,
+    query: &str,
+    page: u32,
+    page_size: u32,
+) -> SourcePage {
+    let has_next = parsed.next_cursor().is_some();
+    if let Some(cursor) = parsed.next_cursor() {
+        remember_cursor(cursors, query, page_size, page, cursor.to_string());
+    }
+
+    SourcePage {
+        servers: parsed.into_summaries(),
+        total_pages: page_bound(page, has_next),
+        freshness: RegistryFreshness::Live,
+    }
+}
+
+/// Puts the curated servers matching `query` at the head of a first page,
+/// adding any the page does not carry and keeping the registry's row for any
+/// it does, within `page_size` rows.
+fn lead_with_curated(servers: &mut Vec<RegistryServerSummary>, query: &str, page_size: u32) {
+    let terms: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    if terms.is_empty() {
+        return;
+    }
+
+    let mut leading: Vec<RegistryServerSummary> = CURATED_SERVERS
+        .iter()
+        .filter(|curated| {
+            let text = format!(
+                "{} {} {}",
+                curated.qualified_name, curated.display_name, curated.description
+            )
+            .to_lowercase();
+            terms.iter().all(|term| text.contains(term.as_str()))
+        })
+        .map(|curated| {
+            servers
+                .iter()
+                .position(|row| row.qualified_name == curated.qualified_name)
+                .map_or_else(|| curated.to_summary(), |at| servers.remove(at))
+        })
+        .collect();
+    leading.append(servers);
+    leading.truncate(usize::try_from(page_size.max(1)).unwrap_or(usize::MAX));
+    *servers = leading;
+}
+
+/// The list endpoint.
+fn list_url(auth: &McpRegistryAuthConfig) -> String {
+    format!("{}/v0/servers", base_url(auth))
 }
 
 /// The cache key for one page of one search.
 fn search_cache_key(query: &str, page: u32, page_size: u32) -> String {
-    format!("mcp_official:search:{query}:{page}:{page_size}")
+    format!("mcp_official:search:latest:{query}:{page}:{page_size}")
 }
 
 /// Records which cursor produced a page.

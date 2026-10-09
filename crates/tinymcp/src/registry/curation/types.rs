@@ -1,28 +1,146 @@
 //! The canonical-server list and the catalog filters.
 
-use tinymcp_bus::RegistryServerSummary;
+use serde_json::json;
+
+pub use super::servers::CURATED_SERVERS;
+use crate::registry::sources::SOURCE_MCP_OFFICIAL;
+use tinymcp_bus::{ExtraFields, RegistryConnection, RegistryServerDetail, RegistryServerSummary};
+
+/// The value `auth_kind` takes for a server declaring a static credential.
+const AUTH_KIND_API_KEY: &str = "api_key";
+
+/// How a curated server's endpoint speaks MCP.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum CuratedTransport {
+    /// Streamable HTTP.
+    StreamableHttp,
+    /// Server-sent events.
+    Sse,
+}
+
+impl CuratedTransport {
+    /// The connection type a catalog detail record uses for this transport.
+    #[must_use]
+    pub const fn connection_type(self) -> &'static str {
+        match self {
+            Self::StreamableHttp => "http",
+            Self::Sse => "sse",
+        }
+    }
+}
+
+/// How a curated server's endpoint authenticates a client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum CuratedAuth {
+    /// OAuth, with dynamic client registration.
+    Oauth,
+    /// OAuth for clients the vendor has registered in advance only; dynamic
+    /// client registration is refused.
+    OauthPreregistered,
+    /// A static token sent in the `Authorization` header.
+    Token,
+    /// No authentication.
+    None,
+}
+
+/// A canonical first-party server, with what it takes to reach it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct CuratedServer {
+    /// The exact registry qualified name.
+    pub qualified_name: &'static str,
+    /// The vendor's name for it.
+    pub display_name: &'static str,
+    /// A short description.
+    pub description: &'static str,
+    /// The vendor-hosted endpoint.
+    pub remote_url: &'static str,
+    /// How the endpoint speaks MCP.
+    pub transport: CuratedTransport,
+    /// How the endpoint authenticates a client.
+    pub auth: CuratedAuth,
+    /// The icon the registry publishes for it, when it publishes one.
+    pub icon_url: Option<&'static str>,
+}
+
+impl CuratedServer {
+    /// This server as a catalog row from the official registry.
+    #[must_use]
+    pub fn to_summary(&self) -> RegistryServerSummary {
+        RegistryServerSummary {
+            qualified_name: self.qualified_name.to_string(),
+            display_name: self.display_name.to_string(),
+            description: Some(self.description.to_string()),
+            icon_url: self.icon_url.map(ToString::to_string),
+            use_count: 0,
+            is_deployed: true,
+            source: SOURCE_MCP_OFFICIAL.to_string(),
+            official: false,
+            website_url: None,
+            auth_kind: (self.auth == CuratedAuth::Token).then(|| AUTH_KIND_API_KEY.to_string()),
+            extra: ExtraFields::new(),
+        }
+    }
+
+    /// This server as a catalog detail record with its one hosted connection.
+    #[must_use]
+    pub fn to_detail(&self) -> RegistryServerDetail {
+        let config_schema = (self.auth == CuratedAuth::Token).then(|| {
+            json!({
+                "properties": { "Authorization": { "x-secret": true } },
+                "required": ["Authorization"],
+            })
+        });
+
+        RegistryServerDetail {
+            qualified_name: self.qualified_name.to_string(),
+            display_name: self.display_name.to_string(),
+            description: Some(self.description.to_string()),
+            icon_url: self.icon_url.map(ToString::to_string),
+            connections: vec![RegistryConnection {
+                r#type: self.transport.connection_type().to_string(),
+                deployment_url: Some(self.remote_url.to_string()),
+                config_schema,
+                example_config: None,
+                published: true,
+                extra: ExtraFields::new(),
+            }],
+            source: SOURCE_MCP_OFFICIAL.to_string(),
+            extra: ExtraFields::new(),
+        }
+    }
+}
+
+/// The curated entry for `qualified_name`, by exact match.
+#[must_use]
+pub fn curated_server(qualified_name: &str) -> Option<&'static CuratedServer> {
+    CURATED_SERVERS
+        .iter()
+        .find(|server| server.qualified_name == qualified_name)
+}
+
+/// The qualified names of [`CURATED_SERVERS`], in the same order.
+pub(super) const fn curated_names() -> [&'static str; CURATED_SERVERS.len()] {
+    let mut names = [""; CURATED_SERVERS.len()];
+    let mut index = 0;
+    while index < CURATED_SERVERS.len() {
+        names[index] = CURATED_SERVERS[index].qualified_name;
+        index += 1;
+    }
+    names
+}
+
+/// The qualified names of [`CURATED_SERVERS`], held so a slice of them can be
+/// borrowed for the whole program.
+const CURATED_NAMES: [&str; CURATED_SERVERS.len()] = curated_names();
 
 /// Canonical first-party servers, by exact registry qualified name.
 ///
-/// Each was confirmed present in the official registry export. These get the
-/// badge; every other server is shown without one. Extend the list as vendors
-/// publish official servers — and only ever with a name checked against the
-/// registry, since an entry here is a claim made to the user.
-pub const OFFICIAL_SERVERS: &[&str] = &[
-    "io.github.github/github-mcp-server",
-    "com.notion/mcp",
-    "com.stripe/mcp",
-    "com.atlassian/atlassian-mcp-server",
-    "app.linear/linear",
-    "com.gitlab/mcp",
-    "com.paypal.mcp/mcp",
-    "com.cloudflare.mcp/mcp",
-    "com.airtable/mcp",
-    "com.supabase/mcp",
-    "com.vercel/vercel-mcp",
-    "com.webflow/mcp",
-    "com.wix/mcp",
-];
+/// The names of [`CURATED_SERVERS`], in the same order. These get the badge;
+/// every other server is shown without one.
+pub const OFFICIAL_SERVERS: &[&str] = &CURATED_NAMES;
 
 /// Marks the canonical first-party server for each known service.
 ///

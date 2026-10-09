@@ -1,6 +1,9 @@
 //! The dispatcher over the upstream catalogs.
 
 use std::collections::HashMap;
+use std::fmt;
+use std::sync::Arc;
+use std::time::Duration;
 
 use parking_lot::Mutex;
 
@@ -9,7 +12,8 @@ use super::smithery::SmitheryRegistry;
 use crate::error::{Error, Result};
 use crate::registry::Store;
 use tinymcp_bus::{
-    McpRegistryAuthConfig, RegistryServerDetail, RegistryServerSummary, RegistrySettings,
+    McpRegistryAuthConfig, RegistryFreshness, RegistryServerDetail, RegistryServerSummary,
+    RegistrySettings,
 };
 
 /// The identifier Smithery stamps on its rows.
@@ -20,6 +24,127 @@ pub const SOURCE_MCP_OFFICIAL: &str = "mcp_official";
 
 /// The default page size when a caller does not ask for one.
 const DEFAULT_PAGE_SIZE: u32 = 20;
+
+/// What a request to an upstream catalog was asking for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub enum RegistryOperation {
+    /// A page of the unfiltered catalog.
+    Browse,
+    /// A page of results for a query.
+    Search,
+    /// One server's detail.
+    Detail,
+}
+
+impl RegistryOperation {
+    /// The operation's lowercase name.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Browse => "browse",
+            Self::Search => "search",
+            Self::Detail => "detail",
+        }
+    }
+
+    /// The operation a listing is: a search when there is a query, a browse
+    /// otherwise.
+    #[must_use]
+    pub const fn for_query(query: &str) -> Self {
+        if query.is_empty() {
+            Self::Browse
+        } else {
+            Self::Search
+        }
+    }
+}
+
+impl fmt::Display for RegistryOperation {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(self.as_str())
+    }
+}
+
+/// How long the official catalog adapter waits on each kind of request.
+///
+/// Search has the shortest budget: it is what a user is typing into, and the
+/// registry's search can stall while its plain listing answers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegistryTimeouts {
+    /// Establishing a connection.
+    pub connect: Duration,
+    /// A page of the unfiltered catalog.
+    pub browse: Duration,
+    /// A page of results for a query.
+    pub search: Duration,
+    /// One server's detail.
+    pub detail: Duration,
+    /// How long listings of the same kind skip the network after one timed
+    /// out, answering from what is cached instead.
+    pub cooldown: Duration,
+}
+
+impl RegistryTimeouts {
+    /// The budget for `operation`.
+    #[must_use]
+    pub const fn budget(&self, operation: RegistryOperation) -> Duration {
+        match operation {
+            RegistryOperation::Browse => self.browse,
+            RegistryOperation::Search => self.search,
+            RegistryOperation::Detail => self.detail,
+        }
+    }
+}
+
+impl Default for RegistryTimeouts {
+    fn default() -> Self {
+        Self {
+            connect: Duration::from_secs(5),
+            browse: Duration::from_secs(15),
+            search: Duration::from_secs(8),
+            detail: Duration::from_secs(12),
+            cooldown: Duration::from_secs(60),
+        }
+    }
+}
+
+/// How the official catalog adapter keeps its local index of the catalog.
+///
+/// The index is what a search answers from once it exists, because the
+/// registry's own search is far slower than paging its plain listing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RegistryIndexSettings {
+    /// How old the last finished sync may be before a search or browse starts
+    /// another in the background.
+    pub refresh: Duration,
+    /// The most pages one background run reads before it pauses. The next
+    /// search or browse resumes the sync from where it paused.
+    pub max_pages: u32,
+    /// How many servers each page asks for.
+    pub page_size: u32,
+}
+
+impl Default for RegistryIndexSettings {
+    fn default() -> Self {
+        Self {
+            refresh: Duration::from_secs(6 * 60 * 60),
+            max_pages: 200,
+            page_size: 100,
+        }
+    }
+}
+
+/// One page from one upstream catalog.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct SourcePage {
+    /// The rows on this page.
+    pub servers: Vec<RegistryServerSummary>,
+    /// A best-effort upper bound on the page count. See [`Registries::search`].
+    pub total_pages: u32,
+    /// Where the rows came from.
+    pub freshness: RegistryFreshness,
+}
 
 /// One upstream catalog.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -74,12 +199,37 @@ impl Registries {
     ///
     /// Returns [`Error::ClientBuild`] when an HTTP client cannot be built.
     pub fn new(auth: McpRegistryAuthConfig) -> Result<Self> {
+        Self::with_official(auth, McpOfficialRegistry::new()?)
+    }
+
+    /// Builds the dispatcher over an official catalog adapter built with its
+    /// own settings.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::ClientBuild`] when the Smithery HTTP client cannot be
+    /// built.
+    pub fn with_official(
+        auth: McpRegistryAuthConfig,
+        official: McpOfficialRegistry,
+    ) -> Result<Self> {
         Ok(Self {
-            official: McpOfficialRegistry::new()?,
+            official,
             smithery: SmitheryRegistry::new()?,
             auth: Mutex::new(auth),
             cursors: Mutex::new(HashMap::new()),
         })
+    }
+
+    /// Starts a background sync of the official catalog's local index when
+    /// one is due, returning whether it did.
+    ///
+    /// A search answers from the index once a sync has finished; until then it
+    /// asks the registry. The sync never blocks the caller, and at most one
+    /// runs at a time.
+    pub fn refresh_index(&self, store: &Arc<Store>) -> bool {
+        let auth = self.auth.lock().clone();
+        self.official.refresh_index(store, &auth)
     }
 
     /// The sources that take part in a search.
@@ -98,15 +248,19 @@ impl Registries {
 
     /// Searches one source.
     ///
-    /// Returns the rows and a best-effort upper bound on the page count. A
-    /// source that cannot know the true total reports the current page plus one
-    /// while more results exist, which is enough for a caller to offer a "next"
-    /// control without committing to a number it would have to walk the whole
-    /// catalog to learn.
+    /// Returns the rows, a best-effort upper bound on the page count, and
+    /// where the rows came from. A source that cannot know the true total
+    /// reports the current page plus one while more results exist, which is
+    /// enough for a caller to offer a "next" control without committing to a
+    /// number it would have to walk the whole catalog to learn.
+    ///
+    /// When the official registry cannot answer, the page is served from what
+    /// is cached and its freshness says so; see
+    /// [`RegistryFreshness`](tinymcp_bus::RegistryFreshness).
     ///
     /// # Errors
     ///
-    /// Returns whatever the upstream returns.
+    /// Returns whatever the upstream returns when nothing cached can stand in.
     pub async fn search(
         &self,
         store: &Store,
@@ -114,7 +268,7 @@ impl Registries {
         query: Option<&str>,
         page: u32,
         page_size: u32,
-    ) -> Result<(Vec<RegistryServerSummary>, u32)> {
+    ) -> Result<SourcePage> {
         let query = query.unwrap_or_default().trim();
         let page = page.max(1);
         let page_size = if page_size == 0 {
@@ -135,9 +289,15 @@ impl Registries {
             }
             RegistrySource::Smithery => {
                 let key = self.smithery_key();
-                self.smithery
+                let (servers, total_pages) = self
+                    .smithery
                     .search(store, key.as_deref(), query, page, page_size)
-                    .await
+                    .await?;
+                Ok(SourcePage {
+                    servers,
+                    total_pages,
+                    freshness: RegistryFreshness::Live,
+                })
             }
         }
     }

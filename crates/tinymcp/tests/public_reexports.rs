@@ -2,6 +2,7 @@
 
 use tinymcp::{
     CONTRACT_VERSION, MCP_CALL_RESULT_KIND, McpAuthChallenge, McpCallError, McpCallOutcome,
+    RegistryFreshness,
 };
 
 #[test]
@@ -20,4 +21,7 @@ fn the_contract_types_resolve_at_the_crate_root_to_the_bus_definitions() {
     );
     assert_eq!(outcome.kind, MCP_CALL_RESULT_KIND);
     assert_eq!(CONTRACT_VERSION, tinymcp_bus::CONTRACT_VERSION);
+
+    let freshness: tinymcp_bus::RegistryFreshness = RegistryFreshness::LocalFallback;
+    assert_ne!(freshness, RegistryFreshness::Live);
 }

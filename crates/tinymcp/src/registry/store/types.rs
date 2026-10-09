@@ -404,6 +404,48 @@ impl Store {
         })
     }
 
+    /// A cached browse response, however old.
+    ///
+    /// For serving something when the upstream cannot answer; a fresh answer
+    /// reads [`Self::cached`].
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] when the query fails.
+    pub(crate) fn cached_stale(&self, cache_key: &str) -> Result<Option<String>> {
+        self.connection
+            .lock()
+            .query_row(
+                "SELECT body_json FROM mcp_registry_cache WHERE cache_key = ?1",
+                params![cache_key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|source| Error::store("reading the browse cache", source))
+    }
+
+    /// Every cached browse response whose key starts with `prefix`, however
+    /// old, newest first.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Store`] when the query fails.
+    pub(crate) fn cached_with_prefix(&self, prefix: &str) -> Result<Vec<String>> {
+        let connection = self.connection.lock();
+        let mut statement = connection
+            .prepare(
+                "SELECT body_json FROM mcp_registry_cache
+                 WHERE instr(cache_key, ?1) = 1
+                 ORDER BY cached_at DESC, cache_key",
+            )
+            .map_err(|source| Error::store("reading the browse cache", source))?;
+
+        statement
+            .query_map(params![prefix], |row| row.get(0))
+            .and_then(Iterator::collect)
+            .map_err(|source| Error::store("reading the browse cache", source))
+    }
+
     /// Caches a browse response against the current time.
     ///
     /// # Errors
@@ -423,7 +465,7 @@ impl Store {
 
     /// Runs `body` against the connection. For tests that need raw access.
     #[cfg(test)]
-    pub(super) fn with_connection<T>(&self, body: impl FnOnce(&Connection) -> T) -> T {
+    pub(crate) fn with_connection<T>(&self, body: impl FnOnce(&Connection) -> T) -> T {
         body(&self.connection.lock())
     }
 }
@@ -544,7 +586,7 @@ fn decode_column<T: serde::de::DeserializeOwned>(
 /// A clock set before the epoch reads as zero rather than failing. Nothing here
 /// makes a decision that a wrong timestamp could make unsafe: the worst case is
 /// a cache entry that looks stale.
-pub(super) fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .ok()

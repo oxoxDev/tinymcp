@@ -18,6 +18,14 @@ out of scope. A roadmap that lists everything is a roadmap nobody trusts.
   for host metering and failure surfacing (contract 1.3)
 - `mcp.json` reading for hosts with their own store (`parse_with`), and a
   guarded OAuth refresh on the flow
+- official-registry listings with one row per server at its latest version,
+  the server's declared icon, per-request time budgets, and cached answers
+  with a reported freshness when the registry stalls (contract 1.4)
+- OAuth discovery for a 401 without `resource_metadata`, from the origin's
+  well-known protected-resource and authorization-server metadata
+- a local, background-synced index of the official catalog that answers
+  searches instantly, and curated first-party servers with their endpoint,
+  transport and authentication
 
 ## Next
 

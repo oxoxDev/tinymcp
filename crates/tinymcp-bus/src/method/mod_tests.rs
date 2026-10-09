@@ -4,7 +4,7 @@
 
 use serde_json::json;
 
-use super::{SearchCuration, ServerDetail, ToolCallOutcome};
+use super::{RegistryFreshness, RegistrySearchPage, SearchCuration, ServerDetail, ToolCallOutcome};
 use crate::{McpServerToolResult, McpToolResult};
 
 #[test]
@@ -102,5 +102,57 @@ fn a_curation_request_serializes_both_switches() {
     assert_eq!(
         serde_json::to_value(curation).unwrap(),
         json!({ "tag_official": true, "official_first": false }),
+    );
+}
+
+#[test]
+fn freshness_travels_in_snake_case() {
+    for (freshness, wire) in [
+        (RegistryFreshness::Live, "live"),
+        (RegistryFreshness::Indexed, "indexed"),
+        (RegistryFreshness::Cached, "cached"),
+        (RegistryFreshness::LocalFallback, "local_fallback"),
+    ] {
+        assert_eq!(serde_json::to_value(freshness).unwrap(), json!(wire));
+        assert_eq!(
+            serde_json::from_value::<RegistryFreshness>(json!(wire)).unwrap(),
+            freshness
+        );
+    }
+}
+
+#[test]
+fn freshness_orders_from_freshest_to_least_fresh() {
+    assert!(RegistryFreshness::Live < RegistryFreshness::Indexed);
+    assert!(RegistryFreshness::Indexed < RegistryFreshness::Cached);
+    assert!(RegistryFreshness::Cached < RegistryFreshness::LocalFallback);
+    assert_eq!(
+        RegistryFreshness::Live.max(RegistryFreshness::Indexed),
+        RegistryFreshness::Indexed
+    );
+    assert_eq!(
+        RegistryFreshness::Live.max(RegistryFreshness::LocalFallback),
+        RegistryFreshness::LocalFallback
+    );
+}
+
+#[test]
+fn a_search_page_from_an_older_module_reads_as_live() {
+    let page: RegistrySearchPage =
+        serde_json::from_value(json!({ "servers": [], "page": 1, "total_pages": 1 })).unwrap();
+
+    assert_eq!(page.freshness, RegistryFreshness::Live);
+}
+
+#[test]
+fn a_search_page_serializes_its_freshness() {
+    let page = RegistrySearchPage {
+        freshness: RegistryFreshness::Cached,
+        ..RegistrySearchPage::default()
+    };
+
+    assert_eq!(
+        serde_json::to_value(&page).unwrap()["freshness"],
+        json!("cached")
     );
 }

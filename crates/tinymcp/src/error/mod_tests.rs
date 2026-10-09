@@ -27,9 +27,28 @@ fn bare_unauthorized_error() -> Error {
     }
 }
 
+/// A registry search that ran out of time.
+fn registry_timeout() -> Error {
+    Error::RegistryTimeout {
+        endpoint: "https://registry.test/v0/servers".into(),
+        operation: crate::registry::RegistryOperation::Search,
+        timeout: std::time::Duration::from_secs(8),
+    }
+}
+
+/// An HTTP failure with `status`.
+fn http(status: u16) -> Error {
+    Error::Http {
+        endpoint: "https://registry.test".into(),
+        status,
+        body: String::new(),
+    }
+}
+
 /// One of every variant that does not need a live `reqwest` failure to build.
 fn assorted_other_errors() -> Vec<Error> {
     vec![
+        registry_timeout(),
         Error::Http {
             endpoint: "https://example.test".into(),
             status: 500,
@@ -102,7 +121,7 @@ fn no_other_variant_is_reported_as_unauthorized() {
 }
 
 #[test]
-fn only_a_401_advertising_resource_metadata_is_flagged_as_oauth() {
+fn only_a_401_with_discovered_oauth_metadata_is_flagged_as_oauth() {
     // This is what decides between offering a sign-in and offering a token
     // field. A server that only accepts OAuth refuses a pasted token however
     // valid it looks.
@@ -422,4 +441,73 @@ fn server_failures_name_what_failed_and_keep_their_cause() {
         "could not bind the mcp server on `127.0.0.1:9300`: address in use"
     );
     assert_eq!(bind.source().unwrap().to_string(), "address in use");
+}
+
+// ---------------------------------------------------------------------------
+// Registry outages
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_registry_timeout_names_the_operation_and_its_budget() {
+    let rendered = registry_timeout().to_string();
+
+    assert!(rendered.contains("search"), "{rendered}");
+    assert!(rendered.contains("8000ms"), "{rendered}");
+    assert!(
+        rendered.contains("https://registry.test/v0/servers"),
+        "{rendered}"
+    );
+}
+
+#[test]
+fn a_registry_timeout_travels_under_its_own_name() {
+    assert_eq!(
+        registry_timeout().wire_name(),
+        tinymcp_bus::errors::REGISTRY_TIMEOUT
+    );
+}
+
+#[test]
+fn a_registry_timeout_is_a_timeout_and_an_outage() {
+    let error = registry_timeout();
+
+    assert!(error.is_timeout());
+    assert!(error.is_registry_unavailable());
+    assert!(!error.is_unauthorized());
+}
+
+#[test]
+fn a_transport_failure_is_an_outage_but_not_necessarily_a_timeout() {
+    let error = Error::Transport {
+        endpoint: "https://registry.test".into(),
+        source: Box::new(a_reqwest_error()),
+    };
+
+    assert!(error.is_registry_unavailable());
+    assert!(!error.is_timeout());
+}
+
+#[test]
+fn statuses_naming_the_upstream_are_outages() {
+    for status in [408, 429, 500, 502, 503, 504, 599] {
+        assert!(http(status).is_registry_unavailable(), "{status}");
+    }
+}
+
+#[test]
+fn statuses_naming_the_request_are_not_outages() {
+    for status in [400, 401, 403, 404, 422, 600] {
+        assert!(!http(status).is_registry_unavailable(), "{status}");
+    }
+    assert!(!http(503).is_timeout());
+}
+
+#[test]
+fn only_outage_variants_count_as_registry_unavailable() {
+    for error in assorted_other_errors() {
+        let expected = matches!(error, Error::RegistryTimeout { .. } | Error::Http { .. });
+        assert_eq!(error.is_registry_unavailable(), expected, "{error:?}");
+    }
+    assert!(!oauth_challenge_error().is_registry_unavailable());
+    assert!(!bare_unauthorized_error().is_timeout());
 }

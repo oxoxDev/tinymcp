@@ -7,7 +7,8 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 use super::{
-    OFFICIAL_SERVERS, float_official_first, is_perfect_server, retain_perfect_servers, tag_official,
+    CURATED_SERVERS, CuratedAuth, CuratedTransport, OFFICIAL_SERVERS, curated_server,
+    float_official_first, is_perfect_server, retain_perfect_servers, tag_official,
 };
 use tinymcp_bus::RegistryServerSummary;
 
@@ -263,4 +264,141 @@ fn floating_a_catalog_with_nothing_badged_changes_nothing() {
         .map(|server| server.qualified_name.as_str())
         .collect();
     assert_eq!(names, ["a/one", "b/two", "c/three"]);
+}
+
+// ---------------------------------------------------------------------------
+// Structured entries
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_name_list_is_the_curated_entries_in_order() {
+    let names: Vec<&str> = CURATED_SERVERS
+        .iter()
+        .map(|server| server.qualified_name)
+        .collect();
+
+    assert_eq!(OFFICIAL_SERVERS, names.as_slice());
+}
+
+#[test]
+fn the_names_are_derived_from_the_entries_at_run_time_too() {
+    assert_eq!(super::types::curated_names().as_slice(), OFFICIAL_SERVERS);
+}
+
+#[test]
+fn the_name_list_still_reads_as_a_slice_of_names() {
+    let names: &[&str] = OFFICIAL_SERVERS;
+
+    assert!(names.contains(&"com.notion/mcp"));
+    assert!(names.contains(&"io.github.github/github-mcp-server"));
+}
+
+#[test]
+fn every_curated_entry_names_a_hosted_https_endpoint() {
+    for server in CURATED_SERVERS {
+        assert!(
+            server.remote_url.starts_with("https://"),
+            "{} has {}",
+            server.qualified_name,
+            server.remote_url
+        );
+        assert_ne!(server.display_name.trim(), "");
+        assert_ne!(server.description.trim(), "");
+    }
+}
+
+#[test]
+fn a_curated_entry_is_found_by_its_exact_name_only() {
+    assert_eq!(
+        curated_server("com.notion/mcp").map(|server| server.remote_url),
+        Some("https://mcp.notion.com/mcp")
+    );
+    assert!(curated_server("com.notion").is_none());
+    assert!(curated_server("ai.smithery/notion").is_none());
+}
+
+#[test]
+fn slack_is_curated_as_oauth_for_preregistered_clients() {
+    let slack = curated_server("com.slack/mcp").expect("curated");
+
+    assert_eq!(slack.remote_url, "https://mcp.slack.com/mcp");
+    assert_eq!(slack.transport, CuratedTransport::StreamableHttp);
+    assert_eq!(slack.auth, CuratedAuth::OauthPreregistered);
+}
+
+#[test]
+fn swiggy_curates_its_four_servers_as_oauth() {
+    let swiggy: Vec<(&str, &str)> = CURATED_SERVERS
+        .iter()
+        .filter(|server| server.qualified_name.starts_with("com.swiggy/"))
+        .map(|server| (server.qualified_name, server.remote_url))
+        .collect();
+
+    assert_eq!(
+        swiggy,
+        [
+            ("com.swiggy/food", "https://mcp.swiggy.com/food"),
+            ("com.swiggy/instamart", "https://mcp.swiggy.com/im"),
+            ("com.swiggy/dineout", "https://mcp.swiggy.com/dineout"),
+            ("com.swiggy/scenes", "https://mcp.swiggy.com/scenes"),
+        ]
+    );
+    for (name, _) in swiggy {
+        let server = curated_server(name).expect("curated");
+        assert_eq!(server.transport, CuratedTransport::StreamableHttp);
+        assert_eq!(server.auth, CuratedAuth::Oauth);
+    }
+}
+
+#[test]
+fn a_curated_row_is_attributed_to_the_official_registry() {
+    let row = curated_server("com.supabase/mcp").unwrap().to_summary();
+
+    assert_eq!(row.qualified_name, "com.supabase/mcp");
+    assert_eq!(row.display_name, "Supabase");
+    assert_eq!(row.source, "mcp_official");
+    assert!(row.is_deployed);
+    assert!(!row.official, "badging is curation's call, not the row's");
+    assert!(row.icon_url.is_some());
+    assert_eq!(row.auth_kind, None);
+}
+
+#[test]
+fn a_token_entry_declares_a_static_credential() {
+    let row = curated_server("com.paypal.mcp/mcp").unwrap().to_summary();
+
+    assert_eq!(row.auth_kind.as_deref(), Some("api_key"));
+}
+
+#[test]
+fn a_curated_detail_offers_its_hosted_endpoint() {
+    let detail = curated_server("com.notion/mcp").unwrap().to_detail();
+
+    assert_eq!(detail.source, "mcp_official");
+    assert_eq!(detail.connections.len(), 1);
+    let connection = &detail.connections[0];
+    assert_eq!(connection.r#type, "http");
+    assert_eq!(
+        connection.deployment_url.as_deref(),
+        Some("https://mcp.notion.com/mcp")
+    );
+    assert!(connection.published);
+    assert!(connection.config_schema.is_none());
+}
+
+#[test]
+fn a_token_detail_asks_for_the_authorization_header() {
+    let detail = curated_server("io.github.github/github-mcp-server")
+        .unwrap()
+        .to_detail();
+
+    let schema = detail.connections[0].config_schema.clone().unwrap();
+    assert_eq!(schema["properties"]["Authorization"]["x-secret"], true);
+    assert_eq!(schema["required"][0], "Authorization");
+}
+
+#[test]
+fn a_server_sent_events_entry_is_an_sse_connection() {
+    assert_eq!(CuratedTransport::Sse.connection_type(), "sse");
+    assert_eq!(CuratedTransport::StreamableHttp.connection_type(), "http");
 }

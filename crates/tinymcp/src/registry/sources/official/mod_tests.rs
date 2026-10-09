@@ -11,7 +11,7 @@
 use serde_json::{Value, json};
 
 use super::types::{OfficialListResponse, OfficialServer};
-use super::{page_bound, search_cache_key};
+use super::{lead_with_curated, page_bound, search_cache_key};
 
 /// A list response wrapping `servers`.
 fn list_response(servers: &Value, next_cursor: Option<&str>) -> OfficialListResponse {
@@ -153,6 +153,118 @@ fn a_repeated_name_appears_once() {
 }
 
 // ---------------------------------------------------------------------------
+// Versions
+// ---------------------------------------------------------------------------
+
+/// An envelope for one version of `name`, marked latest or not.
+fn version(name: &str, title: &str, latest: Option<bool>) -> Value {
+    let mut row = json!({
+        "server": {
+            "name": name,
+            "title": title,
+            "remotes": [{ "url": "https://api.test/mcp" }],
+        },
+    });
+    if let Some(latest) = latest {
+        row["_meta"] = json!({
+            "io.modelcontextprotocol.registry/official": { "status": "active", "isLatest": latest },
+        });
+    }
+    row
+}
+
+#[test]
+fn a_page_listing_every_version_keeps_one_row_per_server() {
+    let rows = recorded(EVERY_VERSION_PAGE);
+    let names: std::collections::BTreeSet<&str> =
+        rows.iter().map(|row| row.qualified_name.as_str()).collect();
+
+    assert_eq!(rows.len(), 11);
+    assert_eq!(names.len(), rows.len(), "every server appears once");
+}
+
+#[test]
+fn the_version_marked_latest_is_the_one_kept() {
+    let rows = recorded(EVERY_VERSION_PAGE);
+    let brainy = rows
+        .iter()
+        .find(|row| row.qualified_name == "ae.brainy/grocery-prices")
+        .expect("listed");
+
+    assert_eq!(brainy.display_name, "Brainy Prices — UAE Cost of Living");
+}
+
+#[test]
+fn a_recorded_latest_page_keeps_every_row() {
+    assert_eq!(recorded(LATEST_PAGE).len(), 20);
+}
+
+#[test]
+fn a_page_keeps_the_order_of_each_server_first_row() {
+    let rows = recorded(EVERY_VERSION_PAGE);
+
+    assert_eq!(rows[0].qualified_name, "ac.inference.sh/mcp");
+    assert_eq!(rows[1].qualified_name, "ac.snag/snag");
+}
+
+#[test]
+fn a_latest_row_is_not_displaced_by_a_later_one() {
+    let response = list_response(
+        &json!([
+            version("same/server", "Latest", Some(true)),
+            version("same/server", "Listed after", Some(false)),
+        ]),
+        None,
+    );
+
+    assert_eq!(response.into_summaries()[0].display_name, "Latest");
+}
+
+#[test]
+fn without_a_latest_mark_the_last_listed_version_is_kept() {
+    let response = list_response(
+        &json!([
+            version("same/server", "Older", None),
+            version("same/server", "Newer", None),
+        ]),
+        None,
+    );
+
+    let rows = response.into_summaries();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].display_name, "Newer");
+}
+
+#[test]
+fn a_versions_document_yields_the_version_marked_latest() {
+    let document = json!({
+        "servers": [
+            version("same/server", "Older", Some(false)),
+            version("same/server", "Latest", Some(true)),
+        ],
+    });
+
+    let latest = super::types::latest_version(&document).expect("a version");
+    assert_eq!(latest["title"], "Latest");
+}
+
+#[test]
+fn a_versions_document_with_no_mark_yields_its_first_version() {
+    let document = json!({
+        "servers": [version("same/server", "First", None), version("same/server", "Second", None)],
+    });
+
+    let latest = super::types::latest_version(&document).expect("a version");
+    assert_eq!(latest["title"], "First");
+}
+
+#[test]
+fn a_versions_document_with_no_servers_yields_nothing() {
+    assert!(super::types::latest_version(&json!({})).is_none());
+    assert!(super::types::latest_version(&json!({ "servers": [] })).is_none());
+}
+
+// ---------------------------------------------------------------------------
 // Names
 // ---------------------------------------------------------------------------
 
@@ -190,6 +302,164 @@ fn a_name_is_derived_from_its_last_segment_with_separators_spaced() {
         let server: OfficialServer = serde_json::from_value(json!({ "name": name })).unwrap();
         assert_eq!(server.display_name(), expected, "for {name}");
     }
+}
+
+// ---------------------------------------------------------------------------
+// Icons
+// ---------------------------------------------------------------------------
+
+/// A page recorded from the live registry with `version=latest`.
+const LATEST_PAGE: &str = include_str!("fixtures/latest_page.json");
+
+/// A page recorded from the live registry without `version=latest`, so it
+/// lists every version of each server.
+const EVERY_VERSION_PAGE: &str = include_str!("fixtures/every_version_page.json");
+
+/// The rows of a recorded page.
+fn recorded(page: &str) -> Vec<tinymcp_bus::RegistryServerSummary> {
+    serde_json::from_str::<OfficialListResponse>(page)
+        .expect("the recorded page decodes")
+        .into_summaries()
+}
+
+/// The icon a recorded row ended up with.
+fn icon_of<'a>(rows: &'a [tinymcp_bus::RegistryServerSummary], name: &str) -> Option<&'a str> {
+    rows.iter()
+        .find(|row| row.qualified_name == name)
+        .unwrap_or_else(|| panic!("{name} is on the recorded page"))
+        .icon_url
+        .as_deref()
+}
+
+#[test]
+fn a_recorded_page_carries_its_declared_icons() {
+    let rows = recorded(LATEST_PAGE);
+
+    assert_eq!(
+        icon_of(&rows, "ae.projectory/mcp"),
+        Some("https://projectory.ae/apple-touch-icon.png")
+    );
+    assert_eq!(
+        icon_of(&rows, "africa.ugc/ugc"),
+        Some("https://ugc.africa/icon-512.png")
+    );
+    assert_eq!(icon_of(&rows, "ac.snag/snag"), None);
+}
+
+#[test]
+fn a_raster_icon_is_preferred_over_an_svg_listed_first() {
+    let rows = recorded(LATEST_PAGE);
+
+    assert_eq!(
+        icon_of(&rows, "ae.plantguide/dubai-gardening"),
+        Some("https://plantguide.ae/icons/icon-512.png")
+    );
+}
+
+#[test]
+fn an_svg_is_used_when_it_is_the_only_icon() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "svg/only",
+        "icons": [{ "src": "https://svg.test/mark.svg", "mimeType": "image/svg+xml" }],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://svg.test/mark.svg")
+    );
+}
+
+#[test]
+fn an_svg_is_recognised_by_its_extension_when_no_type_is_declared() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "mixed/icons",
+        "icons": [
+            { "src": "https://icons.test/mark.SVG?v=2" },
+            { "src": "https://icons.test/mark.webp" },
+        ],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://icons.test/mark.webp")
+    );
+}
+
+#[test]
+fn a_blank_icon_source_is_skipped() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "blank/icon",
+        "icons": [
+            { "src": "  ", "mimeType": "image/png" },
+            { "src": "https://icons.test/mark.svg", "mimeType": "image/svg+xml" },
+        ],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://icons.test/mark.svg")
+    );
+}
+
+#[test]
+fn the_legacy_icon_url_still_answers_when_no_icons_are_declared() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "legacy/icon",
+        "iconUrl": "https://legacy.test/icon.png",
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://legacy.test/icon.png")
+    );
+}
+
+#[test]
+fn declared_icons_win_over_the_legacy_icon_url() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "both/icons",
+        "iconUrl": "https://legacy.test/icon.png",
+        "icons": [{ "src": "https://icons.test/icon.png", "mimeType": "image/png" }],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.best_icon().as_deref(),
+        Some("https://icons.test/icon.png")
+    );
+}
+
+#[test]
+fn a_server_declaring_no_icon_has_none() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "no/icon",
+        "iconUrl": " ",
+    }))
+    .unwrap();
+
+    assert_eq!(server.best_icon(), None);
+}
+
+#[test]
+fn a_detail_record_carries_the_preferred_icon() {
+    let server: OfficialServer = serde_json::from_value(json!({
+        "name": "detail/icon",
+        "icons": [
+            { "src": "https://icons.test/mark.svg", "mimeType": "image/svg+xml" },
+            { "src": "https://icons.test/mark.png", "mimeType": "image/png" },
+        ],
+        "remotes": [{ "url": "https://api.test/mcp" }],
+    }))
+    .unwrap();
+
+    assert_eq!(
+        server.into_detail().icon_url.as_deref(),
+        Some("https://icons.test/mark.png")
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -576,7 +846,7 @@ fn a_response_with_no_metadata_has_no_cursor() {
 fn a_cache_key_separates_query_page_and_size() {
     assert_eq!(
         search_cache_key("weather", 2, 50),
-        "mcp_official:search:weather:2:50"
+        "mcp_official:search:latest:weather:2:50"
     );
     assert_ne!(search_cache_key("a", 1, 20), search_cache_key("a", 2, 20));
     assert_ne!(search_cache_key("a", 1, 20), search_cache_key("a", 1, 50));
@@ -602,6 +872,7 @@ use axum::http::{HeaderMap, Uri};
 use axum::routing::get;
 use parking_lot::Mutex;
 
+use super::super::types::SourcePage;
 use super::{MAX_CURSOR_WALK_PAGES, McpOfficialRegistry};
 use crate::error::Error;
 use crate::registry::Store;
@@ -612,6 +883,7 @@ use tinymcp_bus::McpRegistryAuthConfig;
 struct Seen {
     pages: AtomicUsize,
     cursors: Mutex<Vec<Option<String>>>,
+    versions: Mutex<Vec<Option<String>>>,
     authorization: Mutex<Option<String>>,
     detail_path: Mutex<Option<String>>,
 }
@@ -657,6 +929,7 @@ async fn paged_registry(pages: usize) -> (String, Arc<Seen>) {
 
                     let cursor = param(&uri, "cursor");
                     seen.cursors.lock().push(cursor.clone());
+                    seen.versions.lock().push(param(&uri, "version"));
 
                     let page: usize = cursor
                         .as_deref()
@@ -735,7 +1008,7 @@ fn adapter() -> McpOfficialRegistry {
 async fn the_first_page_is_fetched_without_a_cursor() {
     let (base, seen) = paged_registry(3).await;
 
-    let (servers, _) = adapter()
+    let SourcePage { servers, .. } = adapter()
         .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
         .await
         .expect("the search succeeds");
@@ -745,13 +1018,28 @@ async fn the_first_page_is_fetched_without_a_cursor() {
 }
 
 #[tokio::test]
+async fn every_page_asks_for_the_latest_version_only() {
+    let (base, seen) = paged_registry(3).await;
+
+    adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 2, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        seen.versions.lock().as_slice(),
+        &[Some("latest".to_string()), Some("latest".to_string())]
+    );
+}
+
+#[tokio::test]
 async fn a_page_with_more_behind_it_reports_one_page_beyond() {
     // A bound, not a total: knowing the true count would mean walking the whole
     // chain, which is the cost this design exists to avoid. One page beyond is
     // what a caller needs to decide whether to offer a "next" control.
     let (base, _seen) = paged_registry(3).await;
 
-    let (_, total_pages) = adapter()
+    let SourcePage { total_pages, .. } = adapter()
         .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
         .await
         .unwrap();
@@ -763,7 +1051,7 @@ async fn a_page_with_more_behind_it_reports_one_page_beyond() {
 async fn the_last_page_reports_itself_as_the_last() {
     let (base, _seen) = paged_registry(1).await;
 
-    let (_, total_pages) = adapter()
+    let SourcePage { total_pages, .. } = adapter()
         .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
         .await
         .unwrap();
@@ -835,7 +1123,7 @@ async fn a_cold_map_walks_forward_to_reach_a_deep_page() {
     // A link straight to page four, or the first search after a restart.
     let (base, seen) = paged_registry(5).await;
 
-    let (servers, _) = adapter()
+    let SourcePage { servers, .. } = adapter()
         .search(&store(), &auth_at(&base), &cursors(), "", 4, 20)
         .await
         .expect("the walk reaches page four");
@@ -900,7 +1188,11 @@ async fn a_page_past_the_end_of_the_chain_comes_back_empty() {
     // naming this page as the last is what stops a caller paging further.
     let (base, _seen) = paged_registry(2).await;
 
-    let (servers, total_pages) = adapter()
+    let SourcePage {
+        servers,
+        total_pages,
+        ..
+    } = adapter()
         .search(&store(), &auth_at(&base), &cursors(), "", 5, 20)
         .await
         .expect("running out of pages is not a failure");
@@ -948,7 +1240,11 @@ async fn a_repeated_search_is_served_from_the_stored_cache() {
         .search(&store, &auth, &cursors(), "", 1, 20)
         .await
         .unwrap();
-    let (servers, total_pages) = adapter
+    let SourcePage {
+        servers,
+        total_pages,
+        ..
+    } = adapter
         .search(&store, &auth, &cursors(), "", 1, 20)
         .await
         .unwrap();
@@ -1003,6 +1299,26 @@ async fn a_detail_lookup_takes_the_newest_version() {
         .expect("the lookup succeeds");
 
     assert_eq!(detail.qualified_name, "@acme/weather");
+}
+
+#[tokio::test]
+async fn a_detail_lookup_takes_the_version_marked_latest() {
+    let app = Router::new().fallback(get(|| async {
+        axum::Json(json!({
+            "servers": [
+                version("@acme/weather", "Weather 1", Some(false)),
+                version("@acme/weather", "Weather 2", Some(true)),
+            ],
+        }))
+    }));
+    let base = serve(app).await;
+
+    let detail = adapter()
+        .get(&store(), &auth_at(&base), "@acme/weather")
+        .await
+        .expect("the lookup succeeds");
+
+    assert_eq!(detail.display_name, "Weather 2");
 }
 
 #[tokio::test]
@@ -1144,4 +1460,910 @@ async fn a_list_body_that_does_not_decode_is_reported_as_malformed() {
         matches!(error, Error::MalformedResponse { .. }),
         "{error:?}"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Time budgets
+// ---------------------------------------------------------------------------
+
+use std::time::Duration;
+
+use super::super::types::{RegistryOperation, RegistryTimeouts};
+
+/// A registry that holds every request for `delay` before answering.
+async fn slow_registry(delay: Duration) -> (String, Arc<Seen>) {
+    let seen = Arc::new(Seen::default());
+
+    let app = Router::new()
+        .fallback(get(move |State(seen): State<Arc<Seen>>| async move {
+            seen.pages.fetch_add(1, Ordering::SeqCst);
+            tokio::time::sleep(delay).await;
+            axum::Json(json!({ "servers": [envelope("@acme/slow")] }))
+        }))
+        .with_state(Arc::clone(&seen));
+
+    (serve(app).await, seen)
+}
+
+/// Budgets short enough for a test, with `search` shorter than the rest.
+fn short_budgets() -> RegistryTimeouts {
+    RegistryTimeouts {
+        connect: Duration::from_secs(5),
+        browse: Duration::from_secs(5),
+        search: Duration::from_millis(100),
+        detail: Duration::from_millis(100),
+        cooldown: Duration::from_secs(60),
+    }
+}
+
+/// An adapter with [`short_budgets`].
+fn impatient_adapter() -> McpOfficialRegistry {
+    McpOfficialRegistry::with_timeouts(short_budgets()).expect("the adapter builds")
+}
+
+#[tokio::test]
+async fn a_stalled_search_fails_within_its_budget_as_a_registry_timeout() {
+    let (base, _seen) = slow_registry(Duration::from_secs(5)).await;
+    let started = std::time::Instant::now();
+
+    let error = impatient_adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("the search stalls");
+
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "{:?}",
+        started.elapsed()
+    );
+    match error {
+        Error::RegistryTimeout {
+            operation, timeout, ..
+        } => {
+            assert_eq!(operation, RegistryOperation::Search);
+            assert_eq!(timeout, Duration::from_millis(100));
+        }
+        other => panic!("expected a registry timeout, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_browse_has_its_own_longer_budget() {
+    let (base, _seen) = slow_registry(Duration::from_millis(300)).await;
+
+    let SourcePage { servers, .. } = impatient_adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .expect("the browse budget covers the delay");
+
+    assert_eq!(servers.len(), 1);
+}
+
+#[tokio::test]
+async fn a_stalled_detail_lookup_is_a_detail_timeout() {
+    let (base, _seen) = slow_registry(Duration::from_secs(5)).await;
+
+    let error = impatient_adapter()
+        .get(&store(), &auth_at(&base), "@acme/slow")
+        .await
+        .expect_err("the lookup stalls");
+
+    assert!(
+        matches!(
+            error,
+            Error::RegistryTimeout {
+                operation: RegistryOperation::Detail,
+                ..
+            }
+        ),
+        "{error:?}"
+    );
+    assert!(error.is_registry_unavailable());
+}
+
+// ---------------------------------------------------------------------------
+// Serving from the cache when the registry cannot answer
+// ---------------------------------------------------------------------------
+
+use axum::response::IntoResponse as _;
+use tinymcp_bus::RegistryFreshness;
+
+/// The registry answers normally.
+const UP: usize = 0;
+/// The registry answers 503.
+const FAILING: usize = 1;
+/// The registry holds every request past any test budget.
+const STALLED: usize = 2;
+/// The registry answers 200 with a body that is not a list.
+const GARBLED: usize = 3;
+
+/// A registry whose behaviour a test switches between [`UP`], [`FAILING`],
+/// [`STALLED`] and [`GARBLED`].
+#[derive(Debug, Default)]
+struct Switchable {
+    mode: AtomicUsize,
+    requests: AtomicUsize,
+}
+
+impl Switchable {
+    fn set(&self, mode: usize) {
+        self.mode.store(mode, Ordering::SeqCst);
+    }
+
+    fn requests(&self) -> usize {
+        self.requests.load(Ordering::SeqCst)
+    }
+}
+
+/// A switchable registry: browsing answers the recorded latest page, and a
+/// search for `q` answers one row named `@acme/q`.
+async fn switchable_registry() -> (String, Arc<Switchable>) {
+    let state = Arc::new(Switchable::default());
+
+    let app = Router::new()
+        .route(
+            "/v0/servers",
+            get(
+                |State(state): State<Arc<Switchable>>, uri: Uri| async move {
+                    state.requests.fetch_add(1, Ordering::SeqCst);
+                    match state.mode.load(Ordering::SeqCst) {
+                        FAILING => {
+                            (axum::http::StatusCode::SERVICE_UNAVAILABLE, "down").into_response()
+                        }
+                        STALLED => {
+                            tokio::time::sleep(Duration::from_secs(5)).await;
+                            axum::Json(json!({ "servers": [] })).into_response()
+                        }
+                        GARBLED => "[1, 2, 3]".into_response(),
+                        _ => match param(&uri, "search") {
+                            Some(query) => axum::Json(json!({
+                                "servers": [envelope(&format!("@acme/{query}"))],
+                            }))
+                            .into_response(),
+                            None => LATEST_PAGE.into_response(),
+                        },
+                    }
+                },
+            ),
+        )
+        .with_state(Arc::clone(&state));
+
+    (serve(app).await, state)
+}
+
+/// Moves every cached entry past the cache lifetime.
+fn expire_cache(store: &Store) {
+    store.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE mcp_registry_cache SET cached_at = cached_at - ?1",
+                rusqlite::params![24 * 60 * 60 * 1_000i64],
+            )
+            .unwrap();
+    });
+}
+
+/// Budgets with every listing short, and `cooldown` as given.
+fn budgets_with_cooldown(cooldown: Duration) -> RegistryTimeouts {
+    RegistryTimeouts {
+        browse: Duration::from_millis(200),
+        cooldown,
+        ..short_budgets()
+    }
+}
+
+/// An adapter with [`budgets_with_cooldown`].
+fn adapter_with_cooldown(cooldown: Duration) -> McpOfficialRegistry {
+    McpOfficialRegistry::with_timeouts(budgets_with_cooldown(cooldown)).expect("the adapter builds")
+}
+
+#[tokio::test]
+async fn a_live_answer_is_reported_as_live() {
+    let (base, _state) = switchable_registry().await;
+
+    let page = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(page.freshness, RegistryFreshness::Live);
+    assert_eq!(page.servers.len(), 20);
+}
+
+#[tokio::test]
+async fn a_stalled_search_answers_with_its_earlier_result() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    adapter
+        .search(&store, &auth, &cursors(), "weather", 1, 20)
+        .await
+        .unwrap();
+    expire_cache(&store);
+    state.set(STALLED);
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "weather", 1, 20)
+        .await
+        .expect("the earlier result stands in");
+
+    assert_eq!(page.freshness, RegistryFreshness::Cached);
+    assert_eq!(page.servers[0].qualified_name, "@acme/weather");
+}
+
+#[tokio::test]
+async fn a_failing_browse_answers_with_its_earlier_page_and_cursor() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let warm = cursors();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    expire_cache(&store);
+    state.set(FAILING);
+
+    let page = adapter
+        .search(&store, &auth, &warm, "", 1, 20)
+        .await
+        .expect("the earlier page stands in");
+
+    assert_eq!(page.freshness, RegistryFreshness::Cached);
+    assert_eq!(page.servers.len(), 20);
+    assert_eq!(page.total_pages, 2);
+    assert!(
+        warm.lock().contains_key(&(String::new(), 20, 1)),
+        "the stale page's cursor was recorded"
+    );
+}
+
+#[tokio::test]
+async fn a_stalled_search_with_no_earlier_result_matches_cached_catalog_pages() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    state.set(STALLED);
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "Dubai", 1, 20)
+        .await
+        .expect("cached catalog rows stand in");
+
+    let names: Vec<&str> = page
+        .servers
+        .iter()
+        .map(|row| row.qualified_name.as_str())
+        .collect();
+    assert_eq!(page.freshness, RegistryFreshness::LocalFallback);
+    assert_eq!(page.total_pages, 1);
+    assert_eq!(
+        names,
+        [
+            "ae.datadubai/dubai-real-estate",
+            "ae.plantguide/dubai-gardening",
+            "ae.propick/propick",
+        ],
+        "name and title matches lead description matches"
+    );
+}
+
+#[tokio::test]
+async fn a_local_match_needs_every_word_of_the_query() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    state.set(FAILING);
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "dubai gardening", 1, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(page.servers.len(), 1);
+    assert_eq!(
+        page.servers[0].qualified_name,
+        "ae.plantguide/dubai-gardening"
+    );
+}
+
+#[tokio::test]
+async fn a_local_match_is_capped_at_the_page_size() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    state.set(FAILING);
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "a", 1, 3)
+        .await
+        .unwrap();
+
+    assert_eq!(page.servers.len(), 3);
+}
+
+#[tokio::test]
+async fn a_later_search_page_has_no_local_fallback() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    state.set(FAILING);
+
+    let error = adapter
+        .search(&store, &auth, &cursors(), "dubai", 2, 20)
+        .await
+        .expect_err("only the first page falls back");
+
+    assert!(
+        matches!(error, Error::Http { status: 503, .. }),
+        "{error:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_search_matching_nothing_cached_reports_the_typed_error() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    state.set(STALLED);
+
+    let error = adapter
+        .search(&store, &auth, &cursors(), "zzqqxx", 1, 20)
+        .await
+        .expect_err("nothing cached matches");
+
+    assert!(error.is_timeout(), "{error:?}");
+    assert_eq!(error.wire_name(), tinymcp_bus::errors::REGISTRY_TIMEOUT);
+}
+
+#[tokio::test]
+async fn a_search_with_an_empty_cache_reports_the_typed_error() {
+    let (base, state) = switchable_registry().await;
+    state.set(FAILING);
+
+    let error = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("nothing cached");
+
+    assert!(error.is_registry_unavailable(), "{error:?}");
+}
+
+#[tokio::test]
+async fn a_body_that_does_not_decode_is_not_hidden_behind_the_cache() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    expire_cache(&store);
+    state.set(GARBLED);
+
+    let error = adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .expect_err("a malformed answer is not an outage");
+
+    assert!(
+        matches!(error, Error::MalformedResponse { .. }),
+        "{error:?}"
+    );
+}
+
+#[tokio::test]
+async fn a_stalled_search_skips_the_network_for_the_cooldown() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    state.set(STALLED);
+    adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("stalled");
+    let after_first = state.requests();
+    let started = std::time::Instant::now();
+
+    let error = adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("still cooling down");
+
+    assert_eq!(state.requests(), after_first, "nothing was sent");
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "{:?}",
+        started.elapsed()
+    );
+    match error {
+        Error::RegistryTimeout {
+            operation, timeout, ..
+        } => {
+            assert_eq!(operation, RegistryOperation::Search);
+            assert_eq!(timeout, Duration::from_millis(100));
+        }
+        other => panic!("expected a registry timeout, got {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_cooling_down_search_still_answers_from_the_cache() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .unwrap();
+    state.set(STALLED);
+    adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("stalled");
+    let after_first = state.requests();
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "dubai", 1, 20)
+        .await
+        .expect("cached catalog rows stand in");
+
+    assert_eq!(state.requests(), after_first);
+    assert_eq!(page.freshness, RegistryFreshness::LocalFallback);
+}
+
+#[tokio::test]
+async fn a_search_cooldown_does_not_hold_back_browsing() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    state.set(STALLED);
+    adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("stalled");
+    state.set(UP);
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "", 1, 20)
+        .await
+        .expect("browsing goes to the network");
+
+    assert_eq!(page.freshness, RegistryFreshness::Live);
+}
+
+#[tokio::test]
+async fn the_network_is_tried_again_once_the_cooldown_ends() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::ZERO);
+
+    state.set(STALLED);
+    adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("stalled");
+    state.set(UP);
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "acme", 1, 20)
+        .await
+        .expect("the registry answers again");
+
+    assert_eq!(page.freshness, RegistryFreshness::Live);
+    assert_eq!(page.servers[0].qualified_name, "@acme/acme");
+}
+
+#[tokio::test]
+async fn a_cooldown_is_scoped_to_the_registry_that_stalled() {
+    let (stalled_base, stalled) = switchable_registry().await;
+    let (healthy_base, _healthy) = switchable_registry().await;
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    stalled.set(STALLED);
+    adapter
+        .search(
+            &store,
+            &auth_at(&stalled_base),
+            &cursors(),
+            "nonesuch",
+            1,
+            20,
+        )
+        .await
+        .expect_err("stalled");
+
+    let page = adapter
+        .search(
+            &store,
+            &auth_at(&healthy_base),
+            &cursors(),
+            "nonesuch",
+            1,
+            20,
+        )
+        .await
+        .expect("another registry is not cooling down");
+
+    assert_eq!(page.freshness, RegistryFreshness::Live);
+}
+
+#[tokio::test]
+async fn a_failure_status_starts_no_cooldown() {
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    state.set(FAILING);
+    adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("503");
+    state.set(UP);
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect("an answered failure is retried at once");
+
+    assert_eq!(page.freshness, RegistryFreshness::Live);
+}
+
+#[test]
+fn every_browse_page_shares_the_browse_prefix_and_no_search_page_does() {
+    assert!(search_cache_key("", 1, 20).starts_with(super::BROWSE_CACHE_PREFIX));
+    assert!(search_cache_key("", 7, 50).starts_with(super::BROWSE_CACHE_PREFIX));
+    assert!(!search_cache_key("github", 1, 20).starts_with(super::BROWSE_CACHE_PREFIX));
+}
+
+#[test]
+fn a_local_match_skips_cached_pages_that_do_not_decode() {
+    let store = store();
+    store
+        .cache(&search_cache_key("", 1, 20), "not json")
+        .unwrap();
+    store
+        .cache(
+            &search_cache_key("", 2, 20),
+            &json!({ "servers": [envelope("@acme/weather")] }).to_string(),
+        )
+        .unwrap();
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "weather", 1, 20)
+        .expect("the decodable page answers");
+
+    assert_eq!(page.servers[0].qualified_name, "@acme/weather");
+}
+
+#[test]
+fn a_blank_query_has_no_local_matches() {
+    let store = store();
+    store
+        .cache(
+            &search_cache_key("", 1, 20),
+            &json!({ "servers": [envelope("@acme/weather")] }).to_string(),
+        )
+        .unwrap();
+
+    assert!(super::fallback::serve_cached(&store, &cursors(), "   ", 1, 20).is_none());
+}
+
+// ---------------------------------------------------------------------------
+// Matching cached server details
+// ---------------------------------------------------------------------------
+
+/// A store holding only the cached details of `names`, as a detail lookup
+/// writes them.
+async fn store_with_details(names: &[&str]) -> Store {
+    let (base, _seen) = paged_registry(1).await;
+    let auth = auth_at(&base);
+    let store = store();
+    let adapter = adapter();
+    for name in names {
+        adapter.get(&store, &auth, name).await.unwrap();
+    }
+    store
+}
+
+/// Caches `server` as the detail of the server it names.
+fn cache_detail(store: &Store, server: &Value) {
+    let name = server["name"].as_str().unwrap();
+    store
+        .cache(
+            &format!("{}{name}", super::DETAIL_CACHE_PREFIX),
+            &server.to_string(),
+        )
+        .unwrap();
+}
+
+fn names_of(page: &SourcePage) -> Vec<&str> {
+    page.servers
+        .iter()
+        .map(|row| row.qualified_name.as_str())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_stalled_search_matches_cached_server_details() {
+    let store = store_with_details(&["com.notion/mcp", "io.github.acme/weather"]).await;
+    let (base, state) = switchable_registry().await;
+    state.set(STALLED);
+    let started = std::time::Instant::now();
+
+    let page = adapter_with_cooldown(Duration::from_secs(60))
+        .search(&store, &auth_at(&base), &cursors(), "notion", 1, 20)
+        .await
+        .expect("the cached detail stands in");
+
+    assert!(
+        started.elapsed() < Duration::from_secs(4),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(page.freshness, RegistryFreshness::LocalFallback);
+    assert_eq!(page.total_pages, 1);
+    assert_eq!(names_of(&page), ["com.notion/mcp"]);
+}
+
+#[tokio::test]
+async fn a_cooling_down_search_answers_from_cached_server_details() {
+    let store = store_with_details(&["com.notion/mcp"]).await;
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+
+    state.set(STALLED);
+    adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("stalled");
+    let after_first = state.requests();
+    let started = std::time::Instant::now();
+
+    let page = adapter
+        .search(&store, &auth, &cursors(), "Notion", 1, 20)
+        .await
+        .expect("the cached detail stands in");
+
+    assert_eq!(state.requests(), after_first, "nothing was sent");
+    assert!(
+        started.elapsed() < Duration::from_millis(100),
+        "{:?}",
+        started.elapsed()
+    );
+    assert_eq!(page.freshness, RegistryFreshness::LocalFallback);
+    assert_eq!(names_of(&page), ["com.notion/mcp"]);
+}
+
+#[tokio::test]
+async fn a_search_matching_no_cached_detail_reports_the_typed_error() {
+    let store = store_with_details(&["com.notion/mcp"]).await;
+    let (base, state) = switchable_registry().await;
+    let auth = auth_at(&base);
+    let adapter = adapter_with_cooldown(Duration::from_secs(60));
+    state.set(STALLED);
+
+    let error = adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("no cached detail matches");
+    assert_eq!(error.wire_name(), tinymcp_bus::errors::REGISTRY_TIMEOUT);
+
+    let error = adapter
+        .search(&store, &auth, &cursors(), "nonesuch", 1, 20)
+        .await
+        .expect_err("still nothing matches while cooling down");
+    assert_eq!(error.wire_name(), tinymcp_bus::errors::REGISTRY_TIMEOUT);
+}
+
+#[test]
+fn a_server_cached_as_a_page_row_and_a_detail_appears_once() {
+    let store = store();
+    store
+        .cache(
+            &search_cache_key("", 1, 20),
+            &json!({ "servers": [envelope("com.notion/mcp")] }).to_string(),
+        )
+        .unwrap();
+    cache_detail(&store, &envelope("com.notion/mcp")["server"]);
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+
+    assert_eq!(names_of(&page), ["com.notion/mcp"]);
+}
+
+#[test]
+fn a_detail_matching_on_its_name_leads_a_page_row_matching_on_its_description() {
+    let store = store();
+    store
+        .cache(
+            &search_cache_key("", 1, 20),
+            &json!({ "servers": [{
+                "server": {
+                    "name": "io.github.acme/pages",
+                    "description": "Sync pages to Notion",
+                    "packages": [{ "registryType": "npm", "identifier": "pages" }],
+                },
+            }] })
+            .to_string(),
+        )
+        .unwrap();
+    cache_detail(&store, &envelope("com.notion/mcp")["server"]);
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+
+    assert_eq!(names_of(&page), ["com.notion/mcp", "io.github.acme/pages"]);
+}
+
+#[test]
+fn a_detail_offering_no_way_to_connect_is_not_matched() {
+    let store = store();
+    cache_detail(&store, &json!({ "name": "io.example/zzq" }));
+    store
+        .cache(
+            &format!("{}io.example/zzq-broken", super::DETAIL_CACHE_PREFIX),
+            "not json",
+        )
+        .unwrap();
+
+    assert!(super::fallback::serve_cached(&store, &cursors(), "zzq", 1, 20).is_none());
+}
+
+#[tokio::test]
+async fn a_stalled_search_with_nothing_cached_still_finds_a_curated_server() {
+    let (base, state) = switchable_registry().await;
+    state.set(STALLED);
+
+    let page = adapter_with_cooldown(Duration::from_secs(60))
+        .search(&store(), &auth_at(&base), &cursors(), "slack", 1, 20)
+        .await
+        .expect("the curated entry stands in");
+
+    assert_eq!(page.freshness, RegistryFreshness::LocalFallback);
+    assert_eq!(names_of(&page), ["com.slack/mcp"]);
+}
+
+#[test]
+fn a_curated_server_leads_cached_rows_in_a_local_match() {
+    let store = store();
+    store
+        .cache(
+            &search_cache_key("", 1, 20),
+            &json!({ "servers": [{
+                "server": {
+                    "name": "io.github.acme/notion-sync",
+                    "description": "Sync pages",
+                    "packages": [{ "registryType": "npm", "identifier": "notion-sync" }],
+                },
+            }] })
+            .to_string(),
+        )
+        .unwrap();
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 20).unwrap();
+
+    assert_eq!(
+        names_of(&page),
+        ["com.notion/mcp", "io.github.acme/notion-sync"]
+    );
+}
+
+#[test]
+fn local_matches_from_details_are_capped_at_the_page_size() {
+    let store = store();
+    for name in ["com.notion/a", "com.notion/b", "com.notion/c"] {
+        cache_detail(&store, &envelope(name)["server"]);
+    }
+
+    let page = super::fallback::serve_cached(&store, &cursors(), "notion", 1, 2).unwrap();
+
+    assert_eq!(page.servers.len(), 2);
+}
+
+fn summaries(names: &[&str]) -> Vec<tinymcp_bus::RegistryServerSummary> {
+    list_response(
+        &Value::Array(names.iter().map(|name| envelope(name)).collect()),
+        None,
+    )
+    .into_summaries()
+}
+
+fn names(rows: &[tinymcp_bus::RegistryServerSummary]) -> Vec<&str> {
+    rows.iter().map(|row| row.qualified_name.as_str()).collect()
+}
+
+#[tokio::test]
+async fn a_live_search_leads_with_the_curated_server_the_registry_left_out() {
+    let (base, _state) = switchable_registry().await;
+
+    let page = adapter()
+        .search(&store(), &auth_at(&base), &cursors(), "slack", 1, 20)
+        .await
+        .expect("the registry answers");
+
+    assert_eq!(page.freshness, RegistryFreshness::Live);
+    assert_eq!(names_of(&page), ["com.slack/mcp", "@acme/slack"]);
+}
+
+#[test]
+fn a_curated_server_already_on_the_page_moves_to_the_head_as_the_registry_row() {
+    let mut rows = summaries(&["@acme/notion", "com.notion/mcp"]);
+    rows[1].display_name = "From the registry".to_string();
+
+    lead_with_curated(&mut rows, "notion", 20);
+
+    assert_eq!(names(&rows), ["com.notion/mcp", "@acme/notion"]);
+    assert_eq!(rows[0].display_name, "From the registry");
+}
+
+#[test]
+fn a_curated_lead_stays_within_the_page_size() {
+    let mut rows = summaries(&["@acme/slack", "@acme/slack-2"]);
+
+    lead_with_curated(&mut rows, "slack", 2);
+
+    assert_eq!(names(&rows), ["com.slack/mcp", "@acme/slack"]);
+}
+
+#[test]
+fn a_blank_query_leaves_the_page_alone() {
+    let mut rows = summaries(&["@acme/one", "@acme/two"]);
+
+    lead_with_curated(&mut rows, "  ", 20);
+
+    assert_eq!(names(&rows), ["@acme/one", "@acme/two"]);
+}
+
+#[test]
+fn a_query_matching_no_curated_server_leaves_the_page_alone() {
+    let mut rows = summaries(&["@acme/one"]);
+
+    lead_with_curated(&mut rows, "nonesuch", 20);
+
+    assert_eq!(names(&rows), ["@acme/one"]);
 }

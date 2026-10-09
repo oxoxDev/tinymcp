@@ -18,8 +18,8 @@ use crate::registry::Store;
 use tinymcp_bus::{RegistryListResponse, RegistryServerDetail, RegistryServerSummary};
 
 use super::encode::encode_path_segment;
-use super::shared::{MAX_ERROR_BODY_BYTES, cache, truncate};
-use super::types::SOURCE_SMITHERY;
+use super::shared::{cache, read_body};
+use super::types::{RegistryOperation, SOURCE_SMITHERY};
 
 /// Where Smithery's registry lives.
 const BASE_URL: &str = "https://registry.smithery.ai";
@@ -110,7 +110,7 @@ impl SmitheryRegistry {
             request = request.bearer_auth(key);
         }
 
-        let body = read_body(request, &url).await?;
+        let body = read_body(request, &url, RegistryOperation::for_query(query), TIMEOUT).await?;
         let parsed: RegistryListResponse = serde_json::from_str(&body)
             .map_err(|error| Error::malformed(format!("smithery list response: {error}")))?;
 
@@ -154,7 +154,7 @@ impl SmitheryRegistry {
             request = request.bearer_auth(key);
         }
 
-        let body = read_body(request, &url).await?;
+        let body = read_body(request, &url, RegistryOperation::Detail, TIMEOUT).await?;
         let mut detail: RegistryServerDetail = serde_json::from_str(&body)
             .map_err(|error| Error::malformed(format!("smithery detail response: {error}")))?;
         detail.source = SOURCE_SMITHERY.to_string();
@@ -162,32 +162,6 @@ impl SmitheryRegistry {
         cache(store, &cache_key, &body);
         Ok(detail)
     }
-}
-
-/// Sends a request and returns its body, judging the status first.
-async fn read_body(request: reqwest::RequestBuilder, url: &str) -> Result<String> {
-    let response = request
-        .send()
-        .await
-        .map_err(|error| Error::transport(url, error))?;
-
-    let status = response.status();
-    let body = response
-        .text()
-        .await
-        .map_err(|error| Error::transport(url, error))?;
-
-    if !status.is_success() {
-        return Err(Error::Http {
-            endpoint: crate::redact_endpoint(url),
-            status: status.as_u16(),
-            // Bounded: an upstream failure body can be a whole error page, and
-            // this ends up in a log and an error message.
-            body: truncate(&body, MAX_ERROR_BODY_BYTES),
-        });
-    }
-
-    Ok(body)
 }
 
 /// Stamps the source and clears the trust signals. See the module note.

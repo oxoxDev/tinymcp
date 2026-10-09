@@ -1,6 +1,7 @@
 //! The registry facade and its operations.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
@@ -14,8 +15,8 @@ use crate::registry::{
 use tinymcp_bus::{
     AuthDetection, ConnStatus, ConnectOutcome, ConnectedServerOverview, InstallOutcome,
     InstalledServer, McpClientIdentityConfig, McpProxyConfig, McpRegistryAuthConfig, McpTool,
-    RegistrySearchPage, RegistryServerDetail, RegistrySettings, SearchCuration, ToolCallOutcome,
-    Transport, UpdateEnvOutcome, UpdateEnvStatus, normalize_tool_arguments,
+    RegistryFreshness, RegistrySearchPage, RegistryServerDetail, RegistrySettings, SearchCuration,
+    ToolCallOutcome, Transport, UpdateEnvOutcome, UpdateEnvStatus, normalize_tool_arguments,
 };
 
 /// The separator a source-routed name uses.
@@ -34,7 +35,7 @@ const TEST_CONNECTION_TIMEOUT_SECS: u64 = 30;
 /// Everything a host can ask the dynamic registry to do.
 #[derive(Debug)]
 pub struct McpRegistry {
-    store: Store,
+    store: Arc<Store>,
     connections: Connections,
     registries: Registries,
     oauth: OAuthFlow,
@@ -56,7 +57,7 @@ impl McpRegistry {
         proxy: Option<McpProxyConfig>,
     ) -> Result<Self> {
         Ok(Self {
-            store,
+            store: Arc::new(store),
             connections: Connections::new(),
             registries: Registries::new(registry_auth)?,
             oauth: OAuthFlow::new(proxy.clone())?,
@@ -120,7 +121,11 @@ impl McpRegistry {
 
     /// Searches every catalog taking part in search, merged.
     ///
-    /// The official catalog leads. Badging and the strict filter are applied by
+    /// The official catalog leads. A search or browse also starts a background
+    /// sync of the official catalog's local index when one is due; a query is
+    /// answered from that index once it has finished one.
+    ///
+    /// Badging and the strict filter are applied by
     /// [`crate::registry::curation`] on top of this, by a caller that wants
     /// them — they are presentation choices, and a caller assembling its own
     /// view should not have to undo them.
@@ -129,29 +134,36 @@ impl McpRegistry {
     ///
     /// Returns whatever an upstream returns. A source that fails takes the call
     /// with it rather than silently returning a partial catalog that reads as
-    /// "this server does not exist".
+    /// "this server does not exist". A source that answers from its cache
+    /// instead is not a failure; the page's `freshness` reports the least fresh
+    /// of the sources.
     pub async fn registry_search(
         &self,
         query: Option<&str>,
         page: u32,
         page_size: u32,
     ) -> Result<RegistrySearchPage> {
+        self.registries.refresh_index(&self.store);
+
         let mut servers = Vec::new();
         let mut total_pages = page.max(1);
+        let mut freshness = RegistryFreshness::Live;
 
         for source in self.registries.searchable() {
-            let (found, pages) = self
+            let found = self
                 .registries
                 .search(&self.store, source, query, page, page_size)
                 .await?;
-            servers.extend(found);
-            total_pages = total_pages.max(pages);
+            servers.extend(found.servers);
+            total_pages = total_pages.max(found.total_pages);
+            freshness = freshness.max(found.freshness);
         }
 
         Ok(RegistrySearchPage {
             servers,
             page: page.max(1),
             total_pages,
+            freshness,
         })
     }
 
@@ -622,7 +634,7 @@ impl McpRegistry {
     /// no install, plus [`Error::Store`] when it cannot be read.
     pub async fn detect_auth(&self, server_id: &str) -> Result<AuthDetection> {
         let server_id = require_non_empty(server_id, "server_id")?;
-        self.oauth.detect(&self.store, server_id).await
+        self.oauth.detect(self.store.as_ref(), server_id).await
     }
 
     /// Starts a browser sign-in and returns the URL to open.
@@ -635,7 +647,9 @@ impl McpRegistry {
     /// whatever discovery and registration return.
     pub async fn oauth_begin(&self, server_id: &str, redirect_uri: &str) -> Result<String> {
         let server_id = require_non_empty(server_id, "server_id")?;
-        self.oauth.begin(&self.store, server_id, redirect_uri).await
+        self.oauth
+            .begin(self.store.as_ref(), server_id, redirect_uri)
+            .await
     }
 
     /// Finishes a browser sign-in and connects the server.
@@ -650,7 +664,10 @@ impl McpRegistry {
     /// a failed connect is *not* an error: the sign-in worked, and the outcome
     /// carries no tools.
     pub async fn oauth_complete(&self, state: &str, code: &str) -> Result<ConnectOutcome> {
-        let server_id = self.oauth.complete(&self.store, state, code).await?;
+        let server_id = self
+            .oauth
+            .complete(self.store.as_ref(), state, code)
+            .await?;
         self.store.forget_cached_tools(&server_id)?;
 
         match self.connect(&server_id).await {

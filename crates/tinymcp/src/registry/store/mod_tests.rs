@@ -523,6 +523,59 @@ fn an_entry_older_than_the_lifetime_misses() {
     assert_eq!(store.cached("key").unwrap(), None);
 }
 
+/// Moves every cached entry `minutes` into the past.
+fn age_cache(store: &Store, minutes: i64) {
+    store.with_connection(|connection| {
+        connection
+            .execute(
+                "UPDATE mcp_registry_cache SET cached_at = cached_at - ?1",
+                rusqlite::params![minutes * 60 * 1_000],
+            )
+            .unwrap();
+    });
+}
+
+#[test]
+fn a_stale_read_returns_an_entry_past_its_lifetime() {
+    let (_directory, store) = store();
+    store.cache("key", "old").unwrap();
+    age_cache(&store, 60 * 24);
+
+    assert_eq!(store.cached("key").unwrap(), None);
+    assert_eq!(store.cached_stale("key").unwrap().as_deref(), Some("old"));
+    assert_eq!(store.cached_stale("other").unwrap(), None);
+}
+
+#[test]
+fn a_prefix_read_returns_matching_entries_newest_first() {
+    let (_directory, store) = store();
+    store.cache("browse:1", "older").unwrap();
+    age_cache(&store, 30);
+    store.cache("browse:2", "newer").unwrap();
+    store.cache("search:x:1", "unrelated").unwrap();
+
+    assert_eq!(
+        store.cached_with_prefix("browse:").unwrap(),
+        vec!["newer".to_string(), "older".to_string()]
+    );
+}
+
+#[test]
+fn a_prefix_read_treats_like_wildcards_literally() {
+    let (_directory, store) = store();
+    store.cache("a_b:1", "literal").unwrap();
+    store.cache("axb:1", "wildcard match").unwrap();
+
+    assert_eq!(
+        store.cached_with_prefix("a_b:").unwrap(),
+        vec!["literal".to_string()]
+    );
+    assert_eq!(
+        store.cached_with_prefix("nothing:").unwrap(),
+        Vec::<String>::new()
+    );
+}
+
 #[test]
 fn cache_keys_are_independent() {
     let (_directory, store) = store();
