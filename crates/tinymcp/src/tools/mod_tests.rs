@@ -351,7 +351,7 @@ fn a_tool_is_tagged_so_rules_can_target_its_server_and_remote_name() {
     ] }))
     .unwrap();
     let decision = rules.evaluate(
-        &tinytools::ToolSubject::of(tools[0].as_ref()),
+        &tinytools::ToolSubject::of(&tools[0]),
         &tinytools::RuleContext::new(),
         tinytools::Surface::Call,
         None,
