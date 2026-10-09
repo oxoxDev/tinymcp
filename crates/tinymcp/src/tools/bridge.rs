@@ -302,8 +302,11 @@ impl Tool for McpCallTool {
     /// bind the operation whichever route the model takes, and the target is
     /// judged on the remote tool's own `arguments`.
     fn indirect_target(&self, args: &Value) -> Option<tinytools::IndirectCall> {
-        let server = args.get("server")?.as_str()?;
-        let tool = args.get("tool")?.as_str()?;
+        // The same normalization dispatch applies (trim, fences, trailing
+        // punctuation), so the rules judge the tool that will actually run.
+        let server = required_string_arg(args, "server").ok()?;
+        let tool = required_string_arg(args, "tool").ok()?;
+        let (server, tool) = (server.as_str(), tool.as_str());
         let mut target =
             tinytools::ToolSubject::named(disambiguated_tool_name(server, server, tool))
                 .with_family(server)

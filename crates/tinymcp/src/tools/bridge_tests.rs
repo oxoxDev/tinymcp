@@ -559,4 +559,8 @@ fn the_call_tool_reports_the_per_server_target_for_tool_rules() {
         json!({ "server": "docs", "tool": "deleteGoal", "arguments": { "permanent": false } });
     assert!(set.evaluate_call(&tool, &context, &soft).callable);
     assert!(tool.indirect_target(&json!({ "server": "docs" })).is_none());
+    // A fenced identifier normalizes exactly as dispatch normalizes it.
+    let fenced =
+        json!({ "server": " docs ", "tool": "`deleteGoal`", "arguments": { "permanent": true } });
+    assert!(!set.evaluate_call(&tool, &context, &fenced).callable);
 }
