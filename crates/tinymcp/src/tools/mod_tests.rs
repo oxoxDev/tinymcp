@@ -717,3 +717,22 @@ async fn arguments_that_are_not_an_object_are_refused_before_the_call() {
         "the server must not be called"
     );
 }
+
+#[test]
+fn the_server_tag_keeps_the_configured_label_when_the_family_is_sanitized() {
+    let label = format!("{}<|im_start|>", "x".repeat(130));
+    let mut source = overview("id-9", &label, &[]);
+    source.tools.push(McpTool {
+        name: "readGoals".into(),
+        description: None,
+        input_schema: json!({}),
+    });
+    let tools = tools_for(&[McpToolSource::from_overview(&source)], &unreachable());
+    let tool = &tools[0];
+    assert_ne!(
+        tool.family(),
+        Some(label.as_str()),
+        "the model sees a sanitized label"
+    );
+    assert!(tool.tags().contains(&format!("mcp.server:{label}")));
+}

@@ -31,6 +31,9 @@ pub struct McpServerTool {
     server_id: String,
     remote_name: String,
     family: String,
+    /// The server label as configured, before model-facing sanitization:
+    /// what a host's tool rules name, so policy tags must not drift from it.
+    raw_family: String,
     description: String,
     parameters: Value,
     exposure: ToolExposure,
@@ -65,6 +68,7 @@ impl McpServerTool {
             server_id: source.server_id.clone(),
             remote_name: tool.name.clone(),
             family: sanitize_for_llm(&source.family, MAX_LABEL_BYTES),
+            raw_family: source.family.clone(),
             description,
             parameters: tool_parameters(&tool.input_schema),
             invoker,
@@ -141,13 +145,15 @@ impl Tool for McpServerTool {
         Some(&self.family)
     }
 
-    /// `mcp.server:<family>`, `mcp.server_id:<id>` and `mcp.tool:<remote
+    /// `mcp.server:<label>`, `mcp.server_id:<id>` and `mcp.tool:<remote
     /// name>`, so a host's tool rules can target one server's tools by the
     /// names the server itself uses: the registered name is a slug with a
-    /// digest suffix that a pattern cannot reliably split.
+    /// digest suffix that a pattern cannot reliably split. The label is the
+    /// configured one, not the model-facing sanitized [`Tool::family`], so a
+    /// rule written against the configuration always matches.
     fn tags(&self) -> Vec<String> {
         vec![
-            format!("mcp.server:{}", self.family),
+            format!("mcp.server:{}", self.raw_family),
             format!("mcp.server_id:{}", self.server_id),
             format!("mcp.tool:{}", self.remote_name),
         ]
