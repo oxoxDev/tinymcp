@@ -304,12 +304,13 @@ impl Tool for McpCallTool {
     fn indirect_target(&self, args: &Value) -> Option<tinytools::IndirectCall> {
         let server = args.get("server")?.as_str()?;
         let tool = args.get("tool")?.as_str()?;
-        let mut target = tinytools::ToolSubject::named(disambiguated_tool_name(server, server, tool))
-            .with_family(server)
-            .with_tag(format!("mcp.server:{server}"))
-            .with_tag(format!("mcp.server_id:{server}"))
-            .with_tag(format!("mcp.tool:{tool}"))
-            .with_permission(PermissionLevel::Execute);
+        let mut target =
+            tinytools::ToolSubject::named(disambiguated_tool_name(server, server, tool))
+                .with_family(server)
+                .with_tag(format!("mcp.server:{server}"))
+                .with_tag(format!("mcp.server_id:{server}"))
+                .with_tag(format!("mcp.tool:{tool}"))
+                .with_permission(PermissionLevel::Execute);
         target.category = Some(tinytools::ToolCategory::Workflow);
         let call = tinytools::IndirectCall::new(target);
         Some(

@@ -523,3 +523,40 @@ async fn a_fenced_server_name_reaches_the_configured_server() {
     assert!(!result.is_error, "{}", full_output(&result));
     assert_eq!(calls.lock().len(), 1);
 }
+
+/// The generic dispatcher reports the per-server tool it reaches, so a tool
+/// rule written for that tool binds `mcp_call_tool` too.
+#[test]
+fn the_call_tool_reports_the_per_server_target_for_tool_rules() {
+    let tool = call_tool(test_registry());
+    let args =
+        json!({ "server": "docs", "tool": "deleteGoal", "arguments": "{\"permanent\":true}" });
+    let call = tool.indirect_target(&args).expect("a target");
+    assert_eq!(
+        call.target.name,
+        super::super::naming::disambiguated_tool_name("docs", "docs", "deleteGoal")
+    );
+    assert_eq!(call.target.family.as_deref(), Some("docs"));
+    assert!(
+        call.target
+            .tags
+            .contains(&"mcp.tool:deleteGoal".to_string())
+    );
+    assert_eq!(
+        call.arguments,
+        Some(json!({ "permanent": true })),
+        "encoded arguments are decoded"
+    );
+
+    let rules: tinytools::ToolRules = serde_json::from_value(json!({ "rules": [
+        { "effect": "deny", "match": { "tags": "mcp.tool:delete*", "arg": { "pointer": "/permanent", "value": "true" } } },
+    ] }))
+    .unwrap();
+    let set = tinytools::ToolRuleSet::single(rules);
+    let context = tinytools::RuleContext::new();
+    assert!(!set.evaluate_call(&tool, &context, &args).callable);
+    let soft =
+        json!({ "server": "docs", "tool": "deleteGoal", "arguments": { "permanent": false } });
+    assert!(set.evaluate_call(&tool, &context, &soft).callable);
+    assert!(tool.indirect_target(&json!({ "server": "docs" })).is_none());
+}
