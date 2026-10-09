@@ -350,7 +350,7 @@ impl McpHttpClient {
     /// codegen unit that awaits it. Callers `.await` the returned future as
     /// before.
     #[inline(never)]
-    pub fn initialize<'a>(&'a self) -> BoxFuture<'a, Result<McpInitializeResult>> {
+    pub fn initialize(&self) -> BoxFuture<'_, Result<McpInitializeResult>> {
         Box::pin(self.initialize_inner())
     }
 
@@ -411,7 +411,7 @@ impl McpHttpClient {
     /// codegen unit that awaits it. Callers `.await` the returned future as
     /// before.
     #[inline(never)]
-    pub fn list_tools<'a>(&'a self) -> BoxFuture<'a, Result<Vec<McpRemoteTool>>> {
+    pub fn list_tools(&self) -> BoxFuture<'_, Result<Vec<McpRemoteTool>>> {
         Box::pin(self.list_tools_inner())
     }
 
@@ -523,9 +523,7 @@ impl McpHttpClient {
     /// codegen unit that awaits it. Callers `.await` the returned future as
     /// before.
     #[inline(never)]
-    pub fn discover_authorization<'a>(
-        &'a self,
-    ) -> BoxFuture<'a, Result<Option<McpAuthorizationContext>>> {
+    pub fn discover_authorization(&self) -> BoxFuture<'_, Result<Option<McpAuthorizationContext>>> {
         Box::pin(self.discover_authorization_inner())
     }
 
