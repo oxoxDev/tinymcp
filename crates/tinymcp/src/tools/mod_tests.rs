@@ -330,6 +330,36 @@ fn a_tool_declares_a_remote_effectful_call_grouped_by_server() {
 }
 
 #[test]
+fn a_tool_is_tagged_so_rules_can_target_its_server_and_remote_name() {
+    let mut source = overview("id-1", "@acme/ticktick-mcp", &[]);
+    source.tools.push(McpTool {
+        name: "deleteGoal".into(),
+        description: None,
+        input_schema: json!({}),
+    });
+    let tools = tools_for(&[McpToolSource::from_overview(&source)], &unreachable());
+    assert_eq!(
+        tools[0].tags(),
+        [
+            "mcp.server:@acme/ticktick-mcp",
+            "mcp.server_id:id-1",
+            "mcp.tool:deleteGoal",
+        ]
+    );
+    let rules: tinytools::ToolRules = serde_json::from_value(json!({ "rules": [
+        { "effect": "deny", "match": { "tags": "mcp.tool:delete*" } },
+    ] }))
+    .unwrap();
+    let decision = rules.evaluate(
+        &tinytools::ToolSubject::of(tools[0].as_ref()),
+        &tinytools::RuleContext::new(),
+        tinytools::Surface::Call,
+        None,
+    );
+    assert!(!decision.callable);
+}
+
+#[test]
 fn a_malformed_root_schema_type_is_replaced_with_object() {
     for invalid_type in [json!("string"), Value::Null, json!(["object", "null"])] {
         let schema = tool_parameters(&json!({ "type": invalid_type, "properties": {} }));
