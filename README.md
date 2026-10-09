@@ -252,7 +252,11 @@ when a key is configured.
   matches (added when the registry's answer leaves it out), and its detail
   comes from the entry when the registry cannot describe it. Slack's server (`com.slack/mcp`) is not in the registry
   and accepts only OAuth clients Slack has registered in advance, so it is
-  marked `CuratedAuth::OauthPreregistered`.
+  marked `CuratedAuth::OauthPreregistered`. Swiggy's four servers
+  (`com.swiggy/food`, `com.swiggy/instamart`, `com.swiggy/dineout`,
+  `com.swiggy/scenes`) are not in the registry either; they take OAuth with
+  dynamic client registration, but Swiggy accepts only redirect URIs it has
+  allowlisted for the client.
 
 ## `mcp.json` and OAuth for hosts with their own store
 
