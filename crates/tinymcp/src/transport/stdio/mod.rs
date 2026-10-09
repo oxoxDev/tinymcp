@@ -31,6 +31,7 @@ use std::path::PathBuf;
 use std::process::Stdio;
 use std::sync::atomic::{AtomicI64, Ordering};
 
+use futures_util::future::BoxFuture;
 use serde_json::{Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
@@ -273,7 +274,11 @@ impl McpStdioClient {
     /// codegen unit that awaits it. Callers `.await` the returned future as
     /// before.
     #[inline(never)]
-    pub fn call_tool<'a>(&'a self, name: &'a str, arguments: Value) -> BoxFuture<'a, Result<McpServerToolResult>> {
+    pub fn call_tool<'a>(
+        &'a self,
+        name: &'a str,
+        arguments: Value,
+    ) -> BoxFuture<'a, Result<McpServerToolResult>> {
         Box::pin(self.call_tool_inner(name, arguments))
     }
 

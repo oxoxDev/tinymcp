@@ -463,7 +463,11 @@ impl McpHttpClient {
     /// codegen unit that awaits it. Callers `.await` the returned future as
     /// before.
     #[inline(never)]
-    pub fn call_tool<'a>(&'a self, name: &'a str, arguments: Value) -> BoxFuture<'a, Result<McpServerToolResult>> {
+    pub fn call_tool<'a>(
+        &'a self,
+        name: &'a str,
+        arguments: Value,
+    ) -> BoxFuture<'a, Result<McpServerToolResult>> {
         Box::pin(self.call_tool_inner(name, arguments))
     }
 
@@ -519,7 +523,9 @@ impl McpHttpClient {
     /// codegen unit that awaits it. Callers `.await` the returned future as
     /// before.
     #[inline(never)]
-    pub fn discover_authorization<'a>(&'a self) -> BoxFuture<'a, Result<Option<McpAuthorizationContext>>> {
+    pub fn discover_authorization<'a>(
+        &'a self,
+    ) -> BoxFuture<'a, Result<Option<McpAuthorizationContext>>> {
         Box::pin(self.discover_authorization_inner())
     }
 
@@ -593,7 +599,10 @@ impl McpHttpClient {
     /// codegen unit that awaits it. Callers `.await` the returned future as
     /// before.
     #[inline(never)]
-    pub fn drain_events<'a>(&'a self, last_event_id: Option<&'a str>) -> BoxFuture<'a, Result<Vec<McpSseEvent>>> {
+    pub fn drain_events<'a>(
+        &'a self,
+        last_event_id: Option<&'a str>,
+    ) -> BoxFuture<'a, Result<Vec<McpSseEvent>>> {
         Box::pin(self.drain_events_inner(last_event_id))
     }
 
