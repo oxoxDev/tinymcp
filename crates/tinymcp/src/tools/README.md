@@ -16,7 +16,8 @@ schema.
 Each tool's `family` is its server label. Its `tags` are
 `mcp.server:<label>`, `mcp.server_id:<id>` and `mcp.tool:<remote name>`, so a
 host's `tinytools::ToolRules` can target one server's tools by the names the
-server uses (`{ "tags": "mcp.tool:delete*" }`). The registered name is a slug
+server uses. The label in `mcp.server:` is the configured one, not the
+sanitized `family` (`{ "tags": "mcp.tool:delete*" }`). The registered name is a slug
 with a digest suffix, which a pattern cannot reliably split. The per-server
 `allowed_tools` / `disallowed_tools` lists stay exact, fetch-time filters
 inside the registry.
