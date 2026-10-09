@@ -37,6 +37,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
 use futures_util::StreamExt;
+use futures_util::future::BoxFuture;
 use parking_lot::Mutex;
 use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderName, HeaderValue};
 use reqwest::{RequestBuilder, Response, StatusCode, Url};
@@ -343,7 +344,17 @@ impl McpHttpClient {
     /// Returns [`Error::UnsupportedProtocolVersion`] when the server settles on
     /// a version this client does not speak, [`Error::Unauthorized`] on a 401,
     /// and [`Error::Http`] or [`Error::Transport`] for other failures.
-    pub async fn initialize(&self) -> Result<McpInitializeResult> {
+    ///
+    /// Boxed at the method boundary so the async body is compiled once, inside
+    /// this crate, rather than re-instantiated by every downstream crate or
+    /// codegen unit that awaits it. Callers `.await` the returned future as
+    /// before.
+    #[inline(never)]
+    pub fn initialize<'a>(&'a self) -> BoxFuture<'a, Result<McpInitializeResult>> {
+        Box::pin(self.initialize_inner())
+    }
+
+    async fn initialize_inner(&self) -> Result<McpInitializeResult> {
         if let Some(existing) = self.state.lock().initialize.clone() {
             return Ok(existing);
         }
@@ -394,7 +405,17 @@ impl McpHttpClient {
     ///
     /// Returns [`Error::MalformedResponse`] when the reply has no `tools`
     /// member, plus anything [`Self::initialize`] can return.
-    pub async fn list_tools(&self) -> Result<Vec<McpRemoteTool>> {
+    ///
+    /// Boxed at the method boundary so the async body is compiled once, inside
+    /// this crate, rather than re-instantiated by every downstream crate or
+    /// codegen unit that awaits it. Callers `.await` the returned future as
+    /// before.
+    #[inline(never)]
+    pub fn list_tools<'a>(&'a self) -> BoxFuture<'a, Result<Vec<McpRemoteTool>>> {
+        Box::pin(self.list_tools_inner())
+    }
+
+    async fn list_tools_inner(&self) -> Result<Vec<McpRemoteTool>> {
         self.initialize().await?;
 
         let result = self
@@ -436,7 +457,17 @@ impl McpHttpClient {
     /// Returns whatever the transport returns, plus
     /// [`Error::MalformedResponse`] when a schema-tagged header cannot be
     /// encoded.
-    pub async fn call_tool(&self, name: &str, arguments: Value) -> Result<McpServerToolResult> {
+    ///
+    /// Boxed at the method boundary so the async body is compiled once, inside
+    /// this crate, rather than re-instantiated by every downstream crate or
+    /// codegen unit that awaits it. Callers `.await` the returned future as
+    /// before.
+    #[inline(never)]
+    pub fn call_tool<'a>(&'a self, name: &'a str, arguments: Value) -> BoxFuture<'a, Result<McpServerToolResult>> {
+        Box::pin(self.call_tool_inner(name, arguments))
+    }
+
+    async fn call_tool_inner(&self, name: &str, arguments: Value) -> Result<McpServerToolResult> {
         self.initialize().await?;
 
         let cached = self.state.lock().cached_tools.get(name).cloned();
@@ -482,7 +513,17 @@ impl McpHttpClient {
     /// Returns [`Error::MissingAuthChallenge`] when the 401 carries no readable
     /// challenge, and [`Error::AuthDiscovery`] when the advertised
     /// protected-resource metadata cannot be fetched.
-    pub async fn discover_authorization(&self) -> Result<Option<McpAuthorizationContext>> {
+    ///
+    /// Boxed at the method boundary so the async body is compiled once, inside
+    /// this crate, rather than re-instantiated by every downstream crate or
+    /// codegen unit that awaits it. Callers `.await` the returned future as
+    /// before.
+    #[inline(never)]
+    pub fn discover_authorization<'a>(&'a self) -> BoxFuture<'a, Result<Option<McpAuthorizationContext>>> {
+        Box::pin(self.discover_authorization_inner())
+    }
+
+    async fn discover_authorization_inner(&self) -> Result<Option<McpAuthorizationContext>> {
         let body = json!({
             "jsonrpc": "2.0",
             "id": self.next_request_id(),
@@ -546,7 +587,17 @@ impl McpHttpClient {
     ///
     /// Returns [`Error::Http`] when the stream endpoint answers with a failure
     /// status, plus anything [`Self::initialize`] can return.
-    pub async fn drain_events(&self, last_event_id: Option<&str>) -> Result<Vec<McpSseEvent>> {
+    ///
+    /// Boxed at the method boundary so the async body is compiled once, inside
+    /// this crate, rather than re-instantiated by every downstream crate or
+    /// codegen unit that awaits it. Callers `.await` the returned future as
+    /// before.
+    #[inline(never)]
+    pub fn drain_events<'a>(&'a self, last_event_id: Option<&'a str>) -> BoxFuture<'a, Result<Vec<McpSseEvent>>> {
+        Box::pin(self.drain_events_inner(last_event_id))
+    }
+
+    async fn drain_events_inner(&self, last_event_id: Option<&str>) -> Result<Vec<McpSseEvent>> {
         self.initialize().await?;
 
         let (protocol_version, session_id) = {
