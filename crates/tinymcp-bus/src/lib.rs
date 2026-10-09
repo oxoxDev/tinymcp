@@ -28,6 +28,8 @@
 //! - [`agent_tools`] — the tool specs a host exposes to a model, the
 //!   normalization every forwarded call's `arguments` goes through, and the
 //!   structured outcome a forwarded call reports to the host.
+//! - [`ui`] — tool-provided UI: the presentation a host renders for one
+//!   tool call, its widget document, and classified links.
 //! - [`version`] — [`CONTRACT_VERSION`] and the [`is_compatible`] bind rule.
 //!
 //! # What is deliberately not here
@@ -127,6 +129,7 @@ pub mod names;
 pub mod registry;
 pub mod sanitize;
 pub mod transport;
+pub mod ui;
 pub mod version;
 
 pub use agent_tools::{
@@ -162,5 +165,9 @@ pub use transport::{
     McpClientInfo, McpInitializeResult, McpRemoteTool, McpResource, McpResourceContents,
     McpServerToolResult, McpSseEvent, McpToolContent, McpToolResult, ProtectedResourceMetadata,
     SUPPORTED_PROTOCOL_VERSIONS,
+};
+pub use ui::{
+    LinkClass, MCP_APP_MIME, MCP_APPS_EXTENSION, MCP_UI_KIND, McpUiPresentation, UiCsp, UiFlavor,
+    UiLink, UiLinkKind, UiRendering, UiResource, WidgetCallPolicy,
 };
 pub use version::{CONTRACT_VERSION, is_compatible};
