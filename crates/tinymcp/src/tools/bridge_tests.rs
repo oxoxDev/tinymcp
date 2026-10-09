@@ -534,7 +534,7 @@ fn the_call_tool_reports_the_per_server_target_for_tool_rules() {
     let call = tool.indirect_target(&args).expect("a target");
     assert_eq!(
         call.target.name,
-        super::disambiguated_tool_name("docs", "docs", "deleteGoal")
+        crate::tools::naming::disambiguated_tool_name("docs", "docs", "deleteGoal")
     );
     assert_eq!(call.target.family.as_deref(), Some("docs"));
     assert!(
