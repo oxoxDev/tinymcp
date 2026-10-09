@@ -327,6 +327,30 @@ fn slack_is_curated_as_oauth_for_preregistered_clients() {
 }
 
 #[test]
+fn swiggy_curates_its_four_servers_as_oauth() {
+    let swiggy: Vec<(&str, &str)> = CURATED_SERVERS
+        .iter()
+        .filter(|server| server.qualified_name.starts_with("com.swiggy/"))
+        .map(|server| (server.qualified_name, server.remote_url))
+        .collect();
+
+    assert_eq!(
+        swiggy,
+        [
+            ("com.swiggy/food", "https://mcp.swiggy.com/food"),
+            ("com.swiggy/instamart", "https://mcp.swiggy.com/im"),
+            ("com.swiggy/dineout", "https://mcp.swiggy.com/dineout"),
+            ("com.swiggy/scenes", "https://mcp.swiggy.com/scenes"),
+        ]
+    );
+    for (name, _) in swiggy {
+        let server = curated_server(name).expect("curated");
+        assert_eq!(server.transport, CuratedTransport::StreamableHttp);
+        assert_eq!(server.auth, CuratedAuth::Oauth);
+    }
+}
+
+#[test]
 fn a_curated_row_is_attributed_to_the_official_registry() {
     let row = curated_server("com.supabase/mcp").unwrap().to_summary();
 

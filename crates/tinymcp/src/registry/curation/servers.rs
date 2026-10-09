@@ -1,9 +1,10 @@
 //! The curated first-party servers.
 //!
-//! Every entry but Slack was checked against what the official registry
-//! publishes for that exact name: the hosted endpoint, its transport, and the
-//! headers it declares. Slack publishes no registry entry; its endpoint and
-//! client rules come from Slack's own developer documentation. An entry here is
+//! Every entry but Slack and Swiggy was checked against what the official
+//! registry publishes for that exact name: the hosted endpoint, its transport,
+//! and the headers it declares. Slack and Swiggy publish no registry entry;
+//! their endpoints and client rules come from each vendor's own developer
+//! documentation. An entry here is
 //! a claim made to the user, so extend the list only from a vendor's own
 //! publication.
 
@@ -140,6 +141,44 @@ pub const CURATED_SERVERS: &[CuratedServer] = &[
         remote_url: "https://mcp.slack.com/mcp",
         transport: CuratedTransport::StreamableHttp,
         auth: CuratedAuth::OauthPreregistered,
+        icon_url: None,
+    },
+    CuratedServer {
+        qualified_name: "com.swiggy/food",
+        display_name: "Swiggy Food",
+        description: "Official Swiggy MCP server for restaurant discovery, menus, food ordering \
+                      and order tracking",
+        remote_url: "https://mcp.swiggy.com/food",
+        transport: CuratedTransport::StreamableHttp,
+        auth: CuratedAuth::Oauth,
+        icon_url: None,
+    },
+    CuratedServer {
+        qualified_name: "com.swiggy/instamart",
+        display_name: "Swiggy Instamart",
+        description: "Official Swiggy MCP server for Instamart quick-commerce grocery shopping",
+        remote_url: "https://mcp.swiggy.com/im",
+        transport: CuratedTransport::StreamableHttp,
+        auth: CuratedAuth::Oauth,
+        icon_url: None,
+    },
+    CuratedServer {
+        qualified_name: "com.swiggy/dineout",
+        display_name: "Swiggy Dineout",
+        description: "Official Swiggy MCP server for restaurant table reservations",
+        remote_url: "https://mcp.swiggy.com/dineout",
+        transport: CuratedTransport::StreamableHttp,
+        auth: CuratedAuth::Oauth,
+        icon_url: None,
+    },
+    CuratedServer {
+        qualified_name: "com.swiggy/scenes",
+        display_name: "Swiggy Scenes",
+        description: "Official Swiggy MCP server for discovering events and shows and booking \
+                      tickets",
+        remote_url: "https://mcp.swiggy.com/scenes",
+        transport: CuratedTransport::StreamableHttp,
+        auth: CuratedAuth::Oauth,
         icon_url: None,
     },
 ];
