@@ -83,6 +83,8 @@ pub mod tinybus_module;
 #[cfg(feature = "tools")]
 pub mod tools;
 pub mod transport;
+#[cfg(feature = "ui")]
+pub mod ui;
 
 pub use audit::AuditStore;
 pub use config_servers::{
