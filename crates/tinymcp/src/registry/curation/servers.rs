@@ -181,4 +181,13 @@ pub const CURATED_SERVERS: &[CuratedServer] = &[
         auth: CuratedAuth::Oauth,
         icon_url: None,
     },
+    CuratedServer {
+        qualified_name: "com.zomato/mcp",
+        display_name: "Zomato",
+        description: "An MCP server that exposes functionalities to use Zomato's services.",
+        remote_url: "https://mcp-server.zomato.com/mcp",
+        transport: CuratedTransport::StreamableHttp,
+        auth: CuratedAuth::Oauth,
+        icon_url: None,
+    },
 ];

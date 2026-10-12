@@ -351,6 +351,17 @@ fn swiggy_curates_its_four_servers_as_oauth() {
 }
 
 #[test]
+fn zomato_is_curated_as_oauth_at_its_registry_name_and_endpoint() {
+    let zomato = curated_server("com.zomato/mcp").expect("curated");
+
+    assert_eq!(zomato.display_name, "Zomato");
+    assert_eq!(zomato.remote_url, "https://mcp-server.zomato.com/mcp");
+    assert_eq!(zomato.transport, CuratedTransport::StreamableHttp);
+    assert_eq!(zomato.auth, CuratedAuth::Oauth);
+    assert!(OFFICIAL_SERVERS.contains(&"com.zomato/mcp"));
+}
+
+#[test]
 fn a_curated_row_is_attributed_to_the_official_registry() {
     let row = curated_server("com.supabase/mcp").unwrap().to_summary();
 
