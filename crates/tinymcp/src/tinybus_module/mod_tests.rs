@@ -1140,6 +1140,7 @@ async fn configured_tool_call_runs_confidentially_without_registering_server() {
     let endpoint = format!("http://{addr}/");
     let server_task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
 
+    install_test_provider();
     let bus = MemoryBus::new();
     let broker = Broker::new();
     let broker_task = broker.spawn(bus.clone());
@@ -1787,12 +1788,20 @@ use tinybus::broker::Broker;
 use tinybus::transport::memory::MemoryBus;
 
 /// A connection to a broker running in this process.
-async fn in_process_connection() -> Connection {
+fn install_test_provider() {
     static INSTALL_TEST_PROVIDER: std::sync::Once = std::sync::Once::new();
     INSTALL_TEST_PROVIDER.call_once(|| {
         crate::storage::install_provider(crate::storage::shared_test_provider());
     });
-    let bus = MemoryBus::new();
+}
+
+fn in_process_bus() -> MemoryBus {
+    install_test_provider();
+    MemoryBus::new()
+}
+
+async fn in_process_connection() -> Connection {
+    let bus = in_process_bus();
     Broker::new().spawn(bus.clone());
     Connection::connect(bus.connect().await.expect("a transport"))
         .await
@@ -1821,7 +1830,7 @@ async fn a_module_that_came_up_answers_a_call_on_its_object_path() {
     // The end-to-end shape a host sees: it calls a member at the contract's
     // object path and gets a reply, without knowing anything about this crate.
     let directory = tempfile::tempdir().unwrap();
-    let bus = MemoryBus::new();
+    let bus = in_process_bus();
     Broker::new().spawn(bus.clone());
 
     let serving = Connection::connect(bus.connect().await.unwrap())
@@ -1916,7 +1925,7 @@ fn a_service_builds_from_a_null_configuration() {
 async fn a_module_loaded_with_no_configuration_comes_up() {
     // The release verifier loads the published artifact with an explicit empty
     // configuration and calls it. This is that, minus the download.
-    let bus = MemoryBus::new();
+    let bus = in_process_bus();
     Broker::new().spawn(bus.clone());
 
     let serving = Connection::connect(bus.connect().await.unwrap())
@@ -3286,8 +3295,9 @@ impl crate::transport::stdio::StdioSpawner for RecordingSpawner {
 async fn configured_tool_call_uses_the_services_sandbox_not_an_empty_launcher_set() {
     use crate::transport::stdio::jailed::StdioLaunchers;
     let spawner = std::sync::Arc::new(RecordingSpawner::default());
-    let service = McpService::new_with_stdio(
+    let service = McpService::with_provider_and_stdio(
         &ModuleConfig::default(),
+        std::sync::Arc::new(crate::storage::MemoryProvider::new()),
         StdioLaunchers::sandboxed(spawner.clone()),
     )
     .expect("the service builds");
